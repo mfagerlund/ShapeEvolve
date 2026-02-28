@@ -5,6 +5,7 @@ import {
   GridState, POPULATION,
 } from '../grid';
 import { PRESETS } from '../seeds';
+import { migrateGenome } from '../cgp';
 import { user } from '../auth';
 import { saveShape, updateShape } from '../db';
 import { uploadThumbnail, captureThumbnail } from '../storage';
@@ -46,7 +47,7 @@ export function EvolvePage() {
       localStorage.removeItem('loadGenome');
       localStorage.removeItem('pendingFork');
       try {
-        const genome = JSON.parse(loadedGenome);
+        const genome = migrateGenome(JSON.parse(loadedGenome));
         genomes = createSeededPopulation(genome, numMutations);
       } catch {
         const seed = PRESETS[0].create(cgpCols, cgpRows);

@@ -4,7 +4,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { CGPGenome } from './cgp';
+import { migrateGenome, type CGPGenome } from './cgp';
 
 export interface ShapeDoc {
   id: string;
@@ -71,13 +71,29 @@ export async function saveShape(params: {
 export async function getShape(shapeId: string): Promise<ShapeDoc | null> {
   const snap = await getDoc(doc(db, 'shapes', shapeId));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() } as ShapeDoc;
+  const data = { id: snap.id, ...snap.data() } as ShapeDoc;
+  // Migrate genome to v2 format if needed
+  try {
+    const genome = JSON.parse(data.genome);
+    const migrated = migrateGenome(genome);
+    if (migrated !== genome) data.genome = JSON.stringify(migrated);
+  } catch { /* leave as-is if parse fails */ }
+  return data;
 }
 
 export async function getUserShapes(userId: string): Promise<ShapeDoc[]> {
   const q = query(shapesCol, where('userId', '==', userId), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as ShapeDoc));
+  return snap.docs.map(d => {
+    const data = { id: d.id, ...d.data() } as ShapeDoc;
+    // Migrate genome to v2 format if needed
+    try {
+      const genome = JSON.parse(data.genome);
+      const migrated = migrateGenome(genome);
+      if (migrated !== genome) data.genome = JSON.stringify(migrated);
+    } catch { /* leave as-is */ }
+    return data;
+  });
 }
 
 export async function deleteShape(shapeId: string, userId: string): Promise<void> {
