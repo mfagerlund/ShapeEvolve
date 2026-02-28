@@ -49,6 +49,26 @@ export function createGrid(container: HTMLElement, genomes: CGPGenome[]): GridSt
     label.textContent = `#${i + 1}`;
     cell.appendChild(label);
 
+    const actions = document.createElement('div');
+    actions.className = 'cell-actions';
+    actions.innerHTML =
+      `<button class="cell-btn cell-btn-save" data-action="save" data-index="${i}" title="Save">` +
+        `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+          `<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>` +
+          `<polyline points="17 21 17 13 7 13 7 21"/>` +
+          `<polyline points="7 3 7 8 15 8"/>` +
+        `</svg>` +
+      `</button>` +
+      `<button class="cell-btn cell-btn-max" data-action="maximize" data-index="${i}" title="Maximize">` +
+        `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+          `<polyline points="15 3 21 3 21 9"/>` +
+          `<polyline points="9 21 3 21 3 15"/>` +
+          `<line x1="21" y1="3" x2="14" y2="10"/>` +
+          `<line x1="3" y1="21" x2="10" y2="14"/>` +
+        `</svg>` +
+      `</button>`;
+    cell.appendChild(actions);
+
     container.appendChild(cell);
 
     const viewer = new ShapeViewer(canvas, i);

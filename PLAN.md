@@ -216,7 +216,7 @@ The detail page re-renders the shape live from the genome.
 ## Firebase Project Setup
 
 1. Go to console.firebase.google.com
-2. Create project "shapevolve"
+2. Create project "ShapeEvolve"
 3. Enable Authentication → Google provider
 4. Create Firestore database (start in test mode, then add rules)
 5. Enable Storage
