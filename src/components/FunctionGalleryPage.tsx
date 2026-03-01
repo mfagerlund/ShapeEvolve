@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { route } from 'preact-router';
 import { UNARY_DEMOS, BINARY_DEMOS, TERNARY_DEMOS, FunctionDemo } from '../functionDemos';
 import { ShapeViewer } from '../viewer';
 
@@ -61,6 +62,13 @@ function FunctionCard({ demo, thumb }: { demo: FunctionDemo; thumb?: string }) {
     }
   };
 
+  const evolveFrom = (e: Event) => {
+    e.stopPropagation();
+    const genome = demo.build(10, 6);
+    localStorage.setItem('loadGenome', JSON.stringify(genome));
+    route('/');
+  };
+
   useEffect(() => () => stopAnimation(), []);
 
   return (
@@ -81,6 +89,11 @@ function FunctionCard({ demo, thumb }: { demo: FunctionDemo; thumb?: string }) {
           <span class={`fn-arity-badge ${arityClass}`}>
             {demo.arity === 1 ? 'unary' : demo.arity === 2 ? 'binary' : 'ternary'}
           </span>
+          <button class="fn-card-evolve-btn" onClick={evolveFrom} title="Evolve from this shape">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+          </button>
         </div>
         <p class="fn-card-desc">{demo.description}</p>
         <pre class="fn-card-code">{demo.code}</pre>

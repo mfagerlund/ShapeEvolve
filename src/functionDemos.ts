@@ -34,19 +34,19 @@ function demo(
 
 const UNARY_DEMOS: FunctionDemo[] = [
   demo('sin', 1,
-    'Sine of each component. Creates wavy, undulating surfaces.',
-    'pos = sin(mul(UV0, cu(3)))',
-    (b, s) => ({
-      pos: b.sin(b.mul(b.UV0, b.cu(3))),
-      col: b.cos(b.mul(s, b.cu(2))),
+    'Sine of each component. Creates smooth periodic waves.',
+    'col = sin(mul(UV0, cu(3)))',
+    (b) => ({
+      pos: b.mul(b.UV0, b.cu(0.3)),
+      col: b.sin(b.mul(b.UV0, b.cu(3))),
     })),
 
   demo('cos', 1,
     'Cosine of each component. Phase-shifted sine for rounded shapes.',
-    'pos = cos(mul(UV0, cu(2)))',
+    'pos = cos(mul(UVD, cu(2)))',
     (b) => ({
-      pos: b.cos(b.mul(b.UV0, b.cu(2))),
-      col: b.sin(b.UV0),
+      pos: b.cos(b.mul(b.UVD, b.cu(2))),
+      col: b.sin(b.UVD),
     })),
 
   demo('abs', 1,
@@ -169,6 +169,22 @@ const UNARY_DEMOS: FunctionDemo[] = [
       col: b.cylindrical(s),
     })),
 
+  demo('from_spherical', 1,
+    'Converts (r, theta, phi) back to (x, y, z). Inverse of spherical.',
+    'pos = from_spherical(mul(UVD, c(1, 1, 3.14)))',
+    (b) => ({
+      pos: b.from_spherical(b.mul(b.UVD, b.c(1, 1, Math.PI))),
+      col: b.mul(b.UVD, b.c(0.16, 0.16, 0.3)),
+    })),
+
+  demo('from_cylindrical', 1,
+    'Converts (r, theta, z) back to (x, y, z). Inverse of cylindrical.',
+    'pos = from_cylindrical(UVD)',
+    (b) => ({
+      pos: b.from_cylindrical(b.UVD),
+      col: b.add(b.mul(b.abs(b.from_cylindrical(b.UVD)), b.cu(0.4)), b.c(0.1, 0.2, 0.3)),
+    })),
+
   demo('exp', 1,
     'Safe exponential (clamped input). Creates exponential growth/decay.',
     'pos = mul(sphere, exp(mul(sphere, cu(0.5))))',
@@ -271,10 +287,10 @@ const BINARY_DEMOS: FunctionDemo[] = [
 
   demo('uniform_scale', 2,
     'Scales vector by another\'s x-component. Radial modulation.',
-    'pos = uniform_scale(sphere, add(cu(1), mul(sin(mul(sphere,cu(6))),cu(0.2))))',
+    'pos = uniform_scale(sphere, add(cu(1), sin(UV0)))',
     (b, s) => ({
-      pos: b.uniform_scale(s, b.add(b.cu(1), b.mul(b.sin(b.mul(s, b.cu(6))), b.cu(0.2)))),
-      col: b.add(b.mul(b.abs(s), b.c(0.3, 0.5, 0.4)), b.c(0.1, 0.2, 0.3)),
+      pos: b.uniform_scale(s, b.add(b.cu(1), b.sin(b.UV0))),
+      col: b.sin(b.mul(b.UV0, b.cu(2))),
     })),
 
   demo('rotate_x', 2,
@@ -319,10 +335,10 @@ const BINARY_DEMOS: FunctionDemo[] = [
 
   demo('noise_v', 2,
     'Hash-based pseudorandom noise. Adds fine-grained texture.',
-    'pos = add(sphere, mul(noise_v(mul(sphere,cu(5)),DAT),cu(0.1)))',
+    'pos = add(sphere, mul(noise_v(UV0, cu(1)), cu(0.15)))',
     (b, s) => ({
-      pos: b.add(s, b.mul(b.noise_v(b.mul(s, b.cu(5)), b.DAT), b.cu(0.1))),
-      col: b.noise_v(s, b.cu(1)),
+      pos: b.add(s, b.mul(b.noise_v(b.UV0, b.cu(1)), b.cu(0.15))),
+      col: b.add(b.noise_v(b.UV0, b.cu(2)), b.cu(0.5)),
     })),
 
   demo('swirl', 2,
@@ -335,10 +351,10 @@ const BINARY_DEMOS: FunctionDemo[] = [
 
   demo('simplex3d', 2,
     '3D simplex noise: smooth, gradient-based. Organic displacement.',
-    'pos = add(sphere, mul(simplex3d(sphere,c(4,1,0)),cu(0.15)))',
+    'pos = add(sphere, mul(simplex3d(UVD, c(2,0.15,0)), cu(1)))',
     (b, s) => ({
-      pos: b.add(s, b.mul(b.simplex3d(s, b.c(4, 1, 0)), b.cu(0.15))),
-      col: b.simplex3d(s, b.c(6, 1, 0)),
+      pos: b.add(s, b.simplex3d(b.UVD, b.c(2, 0.15, 0))),
+      col: b.add(b.simplex3d(b.UVD, b.c(3, 0.4, 5)), b.cu(0.5)),
     })),
 
   demo('kaleidoscope', 2,
@@ -350,11 +366,11 @@ const BINARY_DEMOS: FunctionDemo[] = [
     })),
 
   demo('repeat', 2,
-    'Repeats space with a given period. Tiles geometry infinitely.',
-    'pos = repeat(mul(sphere,cu(2)), cu(0.8))',
+    'Repeats space with a given period. Tiles geometry into cells.',
+    'pos = add(sphere, mul(repeat(mul(UV0,cu(4)), cu(1.5)), cu(0.1)))',
     (b, s) => ({
-      pos: b.repeat(b.mul(s, b.cu(2)), b.cu(0.8)),
-      col: b.fract(b.mul(s, b.cu(3))),
+      pos: b.add(s, b.mul(b.repeat(b.mul(b.UV0, b.cu(4)), b.cu(1.5)), b.cu(0.1))),
+      col: b.add(b.abs(b.repeat(b.mul(b.UV0, b.cu(4)), b.cu(1.5))), b.cu(0.2)),
     })),
 
   demo('rotate_xyz', 2,

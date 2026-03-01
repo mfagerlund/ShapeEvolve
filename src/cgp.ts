@@ -212,6 +212,15 @@ export const FUNCTIONS: CGPFunction[] = [
     const l = a[0] * 0.299 + a[1] * 0.587 + a[2] * 0.114;
     return [l, l, l];
   }},
+  { name: 'from_spherical', arity: 1, glsl: ([a]) => `from_spherical3(${a})`, js: ([a]) => {
+    const [r, theta, phi] = a;
+    const sinPhi = Math.sin(phi);
+    return [r * sinPhi * Math.cos(theta), r * sinPhi * Math.sin(theta), r * Math.cos(phi)];
+  }},
+  { name: 'from_cylindrical', arity: 1, glsl: ([a]) => `from_cylindrical3(${a})`, js: ([a]) => {
+    const [r, theta, z] = a;
+    return [r * Math.cos(theta), r * Math.sin(theta), z];
+  }},
   { name: 'kaleidoscope', arity: 2, glsl: ([a, b]) => `kaleidoscope3(${a},${b})`, js: ([a, b]) => {
     const n = Math.max(2, Math.min(12, Math.floor(Math.abs(b[0]) * 3 + 2)));
     const sector = 2 * Math.PI / n;
@@ -858,6 +867,14 @@ vec3 rgb2hsv(vec3 c) {
 }
 vec3 cylindrical(vec3 a) {
   return vec3(length(a.xy), atan(a.y, a.x), a.z);
+}
+vec3 from_spherical3(vec3 a) {
+  float r = a.x, theta = a.y, phi = a.z;
+  float sp = sin(phi);
+  return vec3(r * sp * cos(theta), r * sp * sin(theta), r * cos(phi));
+}
+vec3 from_cylindrical3(vec3 a) {
+  return vec3(a.x * cos(a.y), a.x * sin(a.y), a.z);
 }
 vec3 safeexp3(vec3 a) {
   return exp(clamp(a, -4.0, 4.0));

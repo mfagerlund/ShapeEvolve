@@ -1185,6 +1185,29 @@ html, body {
   line-height: 1.4;
 }
 
+.fn-card-evolve-btn {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.fn-card-evolve-btn:hover {
+  color: var(--green);
+  border-color: var(--green);
+  background: rgba(74, 222, 128, 0.1);
+}
+
 /* --- Responsive --- */
 
 @media (max-width: 800px) {

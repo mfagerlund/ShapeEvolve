@@ -88,6 +88,8 @@ export class GenomeBuilder {
   cylindrical(a: TraceId): TraceId { return this.unary('cylindrical', a); }
   exp(a: TraceId): TraceId { return this.unary('exp', a); }
   bw(a: TraceId): TraceId { return this.unary('bw', a); }
+  from_spherical(a: TraceId): TraceId { return this.unary('from_spherical', a); }
+  from_cylindrical(a: TraceId): TraceId { return this.unary('from_cylindrical', a); }
 
   // --- Binary operations (26) ---
   add(a: TraceId, b: TraceId): TraceId { return this.binary('add', a, b); }
