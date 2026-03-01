@@ -1,8 +1,11 @@
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { storage } from './firebase';
+import { auth } from './firebase';
 
 export async function uploadThumbnail(shapeId: string, dataURL: string): Promise<string> {
-  const storageRef = ref(storage, `thumbnails/${shapeId}.png`);
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Must be signed in to upload');
+  const storageRef = ref(storage, `thumbnails/${uid}/${shapeId}.png`);
   await uploadString(storageRef, dataURL, 'data_url');
   return getDownloadURL(storageRef);
 }

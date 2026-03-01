@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { route } from 'preact-router';
 import { getShape, type ShapeDoc } from '../db';
 import { migrateGenome, type CGPGenome } from '../cgp';
+import { useShapeViewer } from '../useShapeViewer';
 import { CodePanel } from './CodePanel';
 
 interface Props {
@@ -13,8 +14,6 @@ export function DetailPage({ id }: Props) {
   const [loading, setLoading] = useState(true);
   const [showCode, setShowCode] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const viewerRef = useRef<any>(null);
-  const animRef = useRef(0);
 
   useEffect(() => {
     if (!id) return;
@@ -22,56 +21,13 @@ export function DetailPage({ id }: Props) {
     getShape(id).then(s => {
       setShape(s);
       setLoading(false);
+    }).catch(err => {
+      console.error('Failed to load shape:', err);
+      setLoading(false);
     });
   }, [id]);
 
-  // Set up live 3D viewer when shape loads
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el || !shape) return;
-
-    let disposed = false;
-
-    import('../viewer').then(({ ShapeViewer }) => {
-      if (disposed) return;
-      const genome = JSON.parse(shape.genome);
-      const viewer = new ShapeViewer(el, 0);
-      viewer.setGenome(genome);
-      viewerRef.current = viewer;
-
-      function resize() {
-        if (disposed || !el) return;
-        viewer.resize(el.clientWidth, el.clientHeight);
-      }
-      resize();
-      window.addEventListener('resize', resize);
-
-      function animate() {
-        if (disposed) { viewer.dispose(); return; }
-        viewer.render();
-        animRef.current = requestAnimationFrame(animate);
-      }
-      animRef.current = requestAnimationFrame(animate);
-
-      // Store cleanup ref
-      (el as any)._cleanup = () => {
-        window.removeEventListener('resize', resize);
-      };
-    });
-
-    return () => {
-      disposed = true;
-      cancelAnimationFrame(animRef.current);
-      if (viewerRef.current) {
-        viewerRef.current.dispose();
-        viewerRef.current = null;
-      }
-      if ((el as any)?._cleanup) {
-        (el as any)._cleanup();
-        delete (el as any)._cleanup;
-      }
-    };
-  }, [shape]);
+  useShapeViewer(canvasRef, shape?.genome ?? null);
 
   function forkAndEvolve() {
     if (!shape) return;

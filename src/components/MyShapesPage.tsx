@@ -4,6 +4,7 @@ import { user, authReady } from '../auth';
 import { getUserShapes, deleteShape, updateShape, type ShapeDoc } from '../db';
 import { confirm } from './ConfirmDialog';
 import { ShapeViewerOverlay } from './ShapeViewerOverlay';
+import { ShapeCardThumb, ExpandIcon } from './ShapeCardThumb';
 
 export function MyShapesPage() {
   const [shapes, setShapes] = useState<ShapeDoc[]>([]);
@@ -21,6 +22,9 @@ export function MyShapesPage() {
     setLoading(true);
     getUserShapes(u.uid).then(s => {
       setShapes(s);
+      setLoading(false);
+    }).catch(err => {
+      console.error('Failed to load shapes:', err);
       setLoading(false);
     });
   }, [u]);
@@ -65,23 +69,11 @@ export function MyShapesPage() {
         <div class="shape-grid">
           {shapes.map(shape => (
             <div class="shape-card" key={shape.id}>
-              <div class="shape-card-thumb" onClick={() => loadShape(shape)}>
-                {shape.thumbnailURL ? (
-                  <img src={shape.thumbnailURL} alt={shape.name} />
-                ) : (
-                  <div class="thumb-placeholder" />
-                )}
-                <button
-                  class="thumb-view-btn"
-                  title="View animated"
-                  onClick={(e) => { e.stopPropagation(); setViewGenome(shape.genome); }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
-                    <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
-                  </svg>
-                </button>
-              </div>
+              <ShapeCardThumb
+                shape={shape}
+                onClick={() => loadShape(shape)}
+                onViewAnimated={() => setViewGenome(shape.genome)}
+              />
               <div class="shape-card-info">
                 <div class="shape-card-name">{shape.name}</div>
                 <div class="shape-card-meta">
@@ -95,10 +87,7 @@ export function MyShapesPage() {
               </div>
               <div class="shape-card-actions">
                 <button class="card-icon-btn" title="View animated" onClick={() => setViewGenome(shape.genome)}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
-                    <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
-                  </svg>
+                  <ExpandIcon />
                 </button>
                 <button class="card-icon-btn" title="Load to evolve" onClick={() => loadShape(shape)}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

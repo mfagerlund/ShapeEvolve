@@ -28,6 +28,16 @@ export interface ShapeDoc {
 
 const shapesCol = collection(db, 'shapes');
 
+function docToShape(d: QueryDocumentSnapshot): ShapeDoc {
+  const data = { id: d.id, ...d.data() } as ShapeDoc;
+  try {
+    const genome = JSON.parse(data.genome);
+    const migrated = migrateGenome(genome);
+    if (migrated !== genome) data.genome = JSON.stringify(migrated);
+  } catch { /* leave as-is if parse fails */ }
+  return data;
+}
+
 export async function saveShape(params: {
   userId: string;
   userName: string;
@@ -71,29 +81,13 @@ export async function saveShape(params: {
 export async function getShape(shapeId: string): Promise<ShapeDoc | null> {
   const snap = await getDoc(doc(db, 'shapes', shapeId));
   if (!snap.exists()) return null;
-  const data = { id: snap.id, ...snap.data() } as ShapeDoc;
-  // Migrate genome to v2 format if needed
-  try {
-    const genome = JSON.parse(data.genome);
-    const migrated = migrateGenome(genome);
-    if (migrated !== genome) data.genome = JSON.stringify(migrated);
-  } catch { /* leave as-is if parse fails */ }
-  return data;
+  return docToShape(snap as QueryDocumentSnapshot);
 }
 
 export async function getUserShapes(userId: string): Promise<ShapeDoc[]> {
   const q = query(shapesCol, where('userId', '==', userId), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
-  return snap.docs.map(d => {
-    const data = { id: d.id, ...d.data() } as ShapeDoc;
-    // Migrate genome to v2 format if needed
-    try {
-      const genome = JSON.parse(data.genome);
-      const migrated = migrateGenome(genome);
-      if (migrated !== genome) data.genome = JSON.stringify(migrated);
-    } catch { /* leave as-is */ }
-    return data;
-  });
+  return snap.docs.map(docToShape);
 }
 
 export async function getPublicShapes(lastDoc?: QueryDocumentSnapshot): Promise<{
@@ -104,15 +98,7 @@ export async function getPublicShapes(lastDoc?: QueryDocumentSnapshot): Promise<
     ? query(shapesCol, where('public', '==', true), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(20))
     : query(shapesCol, where('public', '==', true), orderBy('createdAt', 'desc'), limit(20));
   const snap = await getDocs(q);
-  const shapes = snap.docs.map(d => {
-    const data = { id: d.id, ...d.data() } as ShapeDoc;
-    try {
-      const genome = JSON.parse(data.genome);
-      const migrated = migrateGenome(genome);
-      if (migrated !== genome) data.genome = JSON.stringify(migrated);
-    } catch { /* leave as-is */ }
-    return data;
-  });
+  const shapes = snap.docs.map(docToShape);
   return {
     shapes,
     lastDoc: snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null,

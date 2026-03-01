@@ -6,24 +6,27 @@ import {
   onAuthStateChanged,
   type User,
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 export const user = signal<User | null>(null);
 export const authReady = signal(false);
 
-onAuthStateChanged(auth, (u) => {
+onAuthStateChanged(auth, async (u) => {
   user.value = u;
   authReady.value = true;
 
   // Upsert user profile on sign-in
   if (u) {
+    const userRef = doc(db, 'users', u.uid);
+    const snap = await getDoc(userRef);
     setDoc(
-      doc(db, 'users', u.uid),
+      userRef,
       {
         displayName: u.displayName,
         photoURL: u.photoURL,
-        createdAt: serverTimestamp(),
+        lastSeen: serverTimestamp(),
+        ...(snap.exists() ? {} : { createdAt: serverTimestamp() }),
       },
       { merge: true }
     );

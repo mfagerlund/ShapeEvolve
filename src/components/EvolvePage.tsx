@@ -156,16 +156,7 @@ export function EvolvePage() {
     });
   }, []);
 
-  const doEvolve = useCallback(() => {
-    const state = stateRef.current;
-    if (selectedIndex === null || !state) return;
-
-    const parent = state.genomes[selectedIndex];
-    updateGrid(state, evolveFromParent(parent, numMutations));
-    setGeneration(state.generation);
-    setSelectedIndex(0);
-
-    // Mark parent cell
+  function markParentCells() {
     const cells = gridRef.current?.querySelectorAll('.grid-cell');
     cells?.forEach((cell, i) => {
       cell.classList.toggle('parent', i === 0);
@@ -176,9 +167,23 @@ export function EvolvePage() {
         label.classList.toggle('parent-label', i === 0);
       }
     });
+  }
 
+  function evolveFrom(parentIndex: number) {
+    const state = stateRef.current;
+    if (!state) return;
+    const parent = state.genomes[parentIndex];
+    updateGrid(state, evolveFromParent(parent, numMutations));
+    setGeneration(state.generation);
+    setSelectedIndex(0);
+    markParentCells();
     resizeViewers(state);
     showToast(`Generation ${state.generation}`);
+  }
+
+  const doEvolve = useCallback(() => {
+    if (selectedIndex === null) return;
+    evolveFrom(selectedIndex);
   }, [selectedIndex, numMutations]);
 
   // Keyboard shortcuts
@@ -213,7 +218,7 @@ export function EvolvePage() {
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [doEvolve, rebuildGrid, cgpCols, cgpRows, numMutations]);
+  }, [doEvolve, rebuildGrid, cgpCols, cgpRows, numMutations, presetIdx]);
 
   // Update selection UI when selectedIndex changes
   useEffect(() => {
@@ -265,28 +270,7 @@ export function EvolvePage() {
     const cell = (e.target as HTMLElement).closest('.grid-cell') as HTMLElement;
     if (!cell) return;
     const index = parseInt(cell.dataset.index!, 10);
-    setSelectedIndex(index);
-    // doEvolve needs the new selectedIndex, so call directly
-    const state = stateRef.current;
-    if (!state) return;
-    const parent = state.genomes[index];
-    updateGrid(state, evolveFromParent(parent, numMutations));
-    setGeneration(state.generation);
-    setSelectedIndex(0);
-
-    const cells = gridRef.current?.querySelectorAll('.grid-cell');
-    cells?.forEach((c, i) => {
-      c.classList.toggle('parent', i === 0);
-      c.classList.toggle('selected', i === 0);
-      const label = c.querySelector('.cell-label');
-      if (label) {
-        label.textContent = i === 0 ? 'Parent' : `#${i + 1}`;
-        label.classList.toggle('parent-label', i === 0);
-      }
-    });
-
-    resizeViewers(state);
-    showToast(`Generation ${state.generation}`);
+    evolveFrom(index);
   }
 
   function onSeedSelect(val: number | 'random') {

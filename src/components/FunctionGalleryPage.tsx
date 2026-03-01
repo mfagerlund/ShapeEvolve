@@ -30,7 +30,7 @@ function FunctionCard({ demo, thumb }: { demo: FunctionDemo; thumb?: string }) {
       viewerRef.current = viewer;
 
       const rect = thumbArea.getBoundingClientRect();
-      viewer.resize(rect.width * devicePixelRatio, rect.height * devicePixelRatio);
+      viewer.resize(rect.width, rect.height);
 
       const animate = () => {
         viewer.render();
