@@ -7,6 +7,7 @@ export function NavBar() {
     <nav class="navbar">
       <div class="navbar-left">
         <a href="/" class="logo">ShapeEvolve</a>
+        <a href="/explore" class="nav-link">Explore</a>
       </div>
       <div class="navbar-right">
         {authReady.value && (

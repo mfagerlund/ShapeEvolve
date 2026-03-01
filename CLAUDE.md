@@ -12,6 +12,19 @@ npm run preview  # Preview production build locally
 
 No test runner or linter is configured.
 
+## Deploy
+
+```bash
+deploy.bat                            # Build + deploy everything (hosting, rules, indexes)
+firebase deploy --only hosting        # Deploy site only
+firebase deploy --only firestore:rules,storage  # Deploy rules only
+```
+
+- **Hosted at**: https://shapeevolve.web.app
+- **Firebase project**: `shapeevolve`
+- Hosting serves `dist/` with SPA rewrite (`** → /index.html`)
+- Security rules: `firestore.rules` (Firestore) + `storage.rules` (Storage)
+
 ## Architecture
 
 ShapeEvolve is an interactive 3D shape evolution app using **Cartesian Genetic Programming (CGP)** to evolve procedural geometry. Users select shapes from a grid; the selected shape becomes the parent for the next generation of mutations.

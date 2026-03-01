@@ -5,7 +5,7 @@ import {
   GridState, POPULATION,
 } from '../grid';
 import { PRESETS } from '../seeds';
-import { migrateGenome } from '../cgp';
+import { migrateGenome, resizeGenome } from '../cgp';
 import { user } from '../auth';
 import { saveShape, updateShape } from '../db';
 import { uploadThumbnail, captureThumbnail } from '../storage';
@@ -50,6 +50,9 @@ export function EvolvePage() {
       try {
         const genome = migrateGenome(JSON.parse(loadedGenome));
         genomes = createSeededPopulation(genome, numMutations);
+        // Restore complexity from the loaded genome
+        setCgpCols(genome.cols);
+        setCgpRows(genome.rows);
       } catch {
         const seed = PRESETS[0].create(cgpCols, cgpRows);
         genomes = createSeededPopulation(seed, numMutations);
@@ -65,14 +68,25 @@ export function EvolvePage() {
       if (stateRef.current) resizeViewers(stateRef.current);
     }));
 
-    // Animation loop
+    // Animation loop — pauses when tab is hidden
     function animate() {
       if (stateRef.current) renderAll(stateRef.current);
       animRef.current = requestAnimationFrame(animate);
     }
+    function onVisibility() {
+      if (document.hidden) {
+        cancelAnimationFrame(animRef.current);
+      } else {
+        animRef.current = requestAnimationFrame(animate);
+      }
+    }
     animRef.current = requestAnimationFrame(animate);
+    document.addEventListener('visibilitychange', onVisibility);
 
-    return () => cancelAnimationFrame(animRef.current);
+    return () => {
+      cancelAnimationFrame(animRef.current);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   // Resize on window resize
@@ -274,7 +288,24 @@ export function EvolvePage() {
     const [c, r] = (e.target as HTMLSelectElement).value.split(',').map(Number);
     setCgpCols(c);
     setCgpRows(r);
-    rebuildGrid(c, r, presetIdx >= 0 ? presetIdx : 'random', numMutations);
+
+    const state = stateRef.current;
+    const container = gridRef.current;
+
+    // If increasing complexity, resize existing genomes to preserve shapes
+    if (state && container && c >= state.cols && r >= state.rows) {
+      const resized = state.genomes.map(g => resizeGenome(g, c, r));
+      state.viewers.forEach(v => v.dispose());
+      container.innerHTML = '';
+      stateRef.current = createGrid(container, resized);
+      stateRef.current.generation = state.generation;
+      setGeneration(state.generation);
+      requestAnimationFrame(() => {
+        if (stateRef.current) resizeViewers(stateRef.current);
+      });
+    } else {
+      rebuildGrid(c, r, presetIdx >= 0 ? presetIdx : 'random', numMutations);
+    }
     showToast(`Complexity: ${c}x${r}`);
   }
 

@@ -83,8 +83,11 @@ export class GenomeBuilder {
   spherical(a: TraceId): TraceId { return this.unary('spherical', a); }
   hsv2rgb(a: TraceId): TraceId { return this.unary('hsv2rgb', a); }
   rgb2hsv(a: TraceId): TraceId { return this.unary('rgb2hsv', a); }
+  cylindrical(a: TraceId): TraceId { return this.unary('cylindrical', a); }
+  exp(a: TraceId): TraceId { return this.unary('exp', a); }
+  bw(a: TraceId): TraceId { return this.unary('bw', a); }
 
-  // --- Binary operations (18) ---
+  // --- Binary operations (26) ---
   add(a: TraceId, b: TraceId): TraceId { return this.binary('add', a, b); }
   sub(a: TraceId, b: TraceId): TraceId { return this.binary('sub', a, b); }
   mul(a: TraceId, b: TraceId): TraceId { return this.binary('mul', a, b); }
@@ -104,6 +107,19 @@ export class GenomeBuilder {
   noise_v(a: TraceId, b: TraceId): TraceId { return this.binary('noise_v', a, b); }
   swirl(a: TraceId, b: TraceId): TraceId { return this.binary('swirl', a, b); }
   simplex3d(a: TraceId, b: TraceId): TraceId { return this.binary('simplex3d', a, b); }
+  kaleidoscope(a: TraceId, b: TraceId): TraceId { return this.binary('kaleidoscope', a, b); }
+  repeat(a: TraceId, b: TraceId): TraceId { return this.binary('repeat', a, b); }
+  rotate_xyz(a: TraceId, b: TraceId): TraceId { return this.binary('rotate_xyz', a, b); }
+  fold(a: TraceId, b: TraceId): TraceId { return this.binary('fold', a, b); }
+  smin(a: TraceId, b: TraceId): TraceId { return this.binary('smin', a, b); }
+  smax(a: TraceId, b: TraceId): TraceId { return this.binary('smax', a, b); }
+  quantize(a: TraceId, b: TraceId): TraceId { return this.binary('quantize', a, b); }
+
+  // --- Ternary operations (4) ---
+  transform(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('transform', a, b, c); }
+  mix_v(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('mix_v', a, b, c); }
+  clamp_v(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('clamp_v', a, b, c); }
+  smoothstep_v(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('smoothstep_v', a, b, c); }
 
   private unary(name: string, a: TraceId): TraceId {
     return this.addTrace({ type: 'op', funcIdx: this.funcIndex(name), inputs: [a] });
@@ -111,6 +127,10 @@ export class GenomeBuilder {
 
   private binary(name: string, a: TraceId, b: TraceId): TraceId {
     return this.addTrace({ type: 'op', funcIdx: this.funcIndex(name), inputs: [a, b] });
+  }
+
+  private ternary(name: string, a: TraceId, b: TraceId, c: TraceId): TraceId {
+    return this.addTrace({ type: 'op', funcIdx: this.funcIndex(name), inputs: [a, b, c] });
   }
 
   // --- Build genome ---
@@ -212,7 +232,7 @@ export class GenomeBuilder {
       return gi;
     });
 
-    return { cols, rows, nodes: gridNodes, outputIndices, constants: genomeConstants, version: 3 };
+    return { cols, rows, nodes: gridNodes, outputIndices, constants: genomeConstants, version: 4 };
   }
 }
 
@@ -319,37 +339,40 @@ function spikySeed(cols: number, rows: number): CGPGenome {
 }
 
 // --- 7. Shell ---
-// Demonstrates: spherical, sqrt, mod
+// Demonstrates: uniform_scale, swizzle_zxy, spherical, mod
+// Latitude ridges via sin(8z) radial modulation
 function shellSeed(cols: number, rows: number): CGPGenome {
   const b = new GenomeBuilder();
   const sphere = buildSphere(b);
 
-  // Convert to spherical (r, θ, φ), create banded ridges
-  const sph = b.spherical(sphere);
-  const bands = b.mod(sph, b.cu(0.5));
-  const smooth = b.sqrt(bands);
-  const pos = b.mul(sphere, b.add(b.cu(0.7), smooth));
+  // Isolate z-component, scale up for frequency, take sin for ridges
+  const ridges = b.swizzle_zxy(b.sin(b.mul(sphere, b.c(0, 0, 8))));
+  // Radial bump: scale sphere by 1 + 0.15 * sin(8z)
+  const bump = b.add(b.cu(1), b.mul(ridges, b.cu(0.15)));
+  const pos = b.uniform_scale(sphere, bump);
 
-  // Color: shifted spherical coords through mod → colorful bands
-  const col = b.mod(b.add(sph, b.c(0.2, 0.4, 0.6)), b.cu(1.0));
+  // Color: spherical angles through mod for banded stripes
+  const col = b.mod(b.mul(b.spherical(sphere), b.cu(3)), b.cu(1));
 
   return b.build({ pos, col }, cols, rows);
 }
 
 // --- 8. Gem ---
-// Demonstrates: reflect, min, max, neg
+// Demonstrates: dot_v, div, abs, mul
+// Projects sphere → octahedron via L1 norm, then stretches into diamond
 function gemSeed(cols: number, rows: number): CGPGenome {
   const b = new GenomeBuilder();
   const sphere = buildSphere(b);
 
-  // Reflect across (1,1,1) diagonal, then min/max/neg create angular facets
-  const axis = b.c(0.577, 0.577, 0.577);
-  const reflected = b.reflect(sphere, axis);
-  const cut = b.min(sphere, reflected);
-  const pos = b.max(cut, b.neg(reflected));
+  // L1 norm: |x| + |y| + |z| → project onto octahedron (dual of cube)
+  const l1 = b.dot_v(b.abs(sphere), b.cu(1));
+  const octa = b.div(sphere, l1);
 
-  // Color: abs of reflected coords → facet-based coloring
-  const col = b.abs(reflected);
+  // Stretch vertically into diamond proportions
+  const pos = b.mul(octa, b.c(0.8, 0.8, 1.4));
+
+  // Color: each octant gets a distinct hue
+  const col = b.abs(sphere);
 
   return b.build({ pos, col }, cols, rows);
 }

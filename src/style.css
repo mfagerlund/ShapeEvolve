@@ -609,6 +609,150 @@ html, body {
   padding: 8px 12px 12px;
 }
 
+/* --- NavBar link --- */
+
+.nav-link {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: color 0.15s ease;
+}
+
+.nav-link:hover {
+  color: var(--text);
+}
+
+/* --- Gallery page --- */
+
+.gallery-page {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.shape-card-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.avatar-sm {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+
+.tag-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.tag-clickable:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+/* --- Detail page --- */
+
+.detail-page {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.detail-back {
+  margin-bottom: 16px;
+}
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  max-width: 1200px;
+}
+
+.detail-viewer {
+  aspect-ratio: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.detail-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.detail-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-info h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.detail-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.detail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.meta-label {
+  color: var(--text-dim);
+  margin-right: 8px;
+}
+
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.detail-forked {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.detail-forked a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.detail-forked a:hover {
+  text-decoration: underline;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
 /* --- Responsive --- */
 
 @media (max-width: 800px) {
@@ -623,5 +767,8 @@ html, body {
   .settings-bar {
     flex-wrap: wrap;
     gap: 10px;
+  }
+  .detail-layout {
+    grid-template-columns: 1fr;
   }
 }

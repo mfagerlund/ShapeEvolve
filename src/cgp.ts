@@ -7,7 +7,7 @@ export const OUTPUT_NAMES = ['pos', 'col'] as const;
 export const NUM_INPUTS = INPUT_NAMES.length;
 export const NUM_OUTPUTS = OUTPUT_NAMES.length;
 export const DEFAULT_NUM_CONSTANTS = 6;
-export const MAX_ARITY = 2;
+export const MAX_ARITY = 3;
 
 // --- Vec3 JS helpers ---
 
@@ -85,7 +85,7 @@ function simplexNoise3D(x: number, y: number, z: number): number {
 
 export interface CGPFunction {
   name: string;
-  arity: number; // 1 or 2
+  arity: number; // 1, 2, or 3
   glsl: (args: string[]) => string;
   js: (args: Vec3[]) => Vec3;
 }
@@ -140,7 +140,8 @@ export const FUNCTIONS: CGPFunction[] = [
     return [h, s, v];
   }},
 
-  // --- Binary (18) ---
+  // --- Binary (19) --- indices 16-34, must stay stable for saved genomes
+  //     DO NOT insert new functions above this line!
   { name: 'add', arity: 2, glsl: ([a, b]) => `(${a}+${b})`, js: ([a, b]) => v3add(a, b) },
   { name: 'sub', arity: 2, glsl: ([a, b]) => `(${a}-${b})`, js: ([a, b]) => v3sub(a, b) },
   { name: 'mul', arity: 2, glsl: ([a, b]) => `(${a}*${b})`, js: ([a, b]) => v3mul(a, b) },
@@ -193,6 +194,96 @@ export const FUNCTIONS: CGPFunction[] = [
       simplexNoise3D(px + 31.416, py - 17.53, pz + seed + 7.892) * amp,
       simplexNoise3D(px - 12.77, py + 43.21, pz + seed - 28.65) * amp,
     ];
+  }},
+
+  // --- New functions (index 35+) --- safe to reorder/extend
+  { name: 'cylindrical', arity: 1, glsl: ([a]) => `cylindrical(${a})`, js: ([a]) => {
+    const r = Math.sqrt(a[0]*a[0] + a[1]*a[1]);
+    const theta = Math.atan2(a[1], a[0]);
+    return [r, theta, a[2]];
+  }},
+  { name: 'exp', arity: 1, glsl: ([a]) => `safeexp3(${a})`, js: ([a]) => v3map(a, x => Math.exp(Math.max(-4, Math.min(4, x)))) },
+  { name: 'bw', arity: 1, glsl: ([a]) => `vec3(dot(${a},vec3(0.299,0.587,0.114)))`, js: ([a]) => {
+    const l = a[0] * 0.299 + a[1] * 0.587 + a[2] * 0.114;
+    return [l, l, l];
+  }},
+  { name: 'kaleidoscope', arity: 2, glsl: ([a, b]) => `kaleidoscope3(${a},${b})`, js: ([a, b]) => {
+    const n = Math.max(2, Math.min(12, Math.floor(Math.abs(b[0]) * 3 + 2)));
+    const sector = 2 * Math.PI / n;
+    const r = Math.sqrt(a[0]*a[0] + a[1]*a[1]);
+    const raw = Math.atan2(a[1], a[0]) + Math.PI;
+    const inSector = raw - sector * Math.floor(raw / sector);
+    const angle = Math.abs(inSector - sector * 0.5);
+    return [r * Math.cos(angle), r * Math.sin(angle), a[2]];
+  }},
+  { name: 'repeat', arity: 2, glsl: ([a, b]) => `repeat3(${a},${b})`, js: ([a, b]) => {
+    return a.map((v, i) => {
+      const p = Math.max(Math.abs(b[i]), 0.001);
+      const shifted = v + p * 0.5;
+      return shifted - p * Math.floor(shifted / p) - p * 0.5;
+    }) as Vec3;
+  }},
+  { name: 'rotate_xyz', arity: 2, glsl: ([a, b]) => `rotate_xyz3(${a},${b})`, js: ([a, b]) => {
+    const cx = Math.cos(b[0]), sx = Math.sin(b[0]);
+    const v1: Vec3 = [a[0], a[1]*cx - a[2]*sx, a[1]*sx + a[2]*cx];
+    const cy = Math.cos(b[1]), sy = Math.sin(b[1]);
+    const v2: Vec3 = [v1[0]*cy + v1[2]*sy, v1[1], -v1[0]*sy + v1[2]*cy];
+    const cz = Math.cos(b[2]), sz = Math.sin(b[2]);
+    return [v2[0]*cz - v2[1]*sz, v2[0]*sz + v2[1]*cz, v2[2]];
+  }},
+  { name: 'fold', arity: 2, glsl: ([a, b]) => `fold3(${a},${b})`, js: ([a, b]) => {
+    const n = v3normalize(b);
+    const d = Math.min(v3dot(a, n), 0);
+    return v3sub(a, v3scale(n, 2 * d));
+  }},
+  { name: 'smin', arity: 2, glsl: ([a, b]) => `smin3(${a},${b})`, js: ([a, b]) => {
+    const k = 0.3;
+    return a.map((av, i) => {
+      const h = Math.max(0, Math.min(1, 0.5 + 0.5 * (b[i] - av) / k));
+      return b[i] * (1 - h) + av * h - k * h * (1 - h);
+    }) as Vec3;
+  }},
+  { name: 'smax', arity: 2, glsl: ([a, b]) => `smax3(${a},${b})`, js: ([a, b]) => {
+    const k = 0.3;
+    return a.map((av, i) => {
+      const h = Math.max(0, Math.min(1, 0.5 + 0.5 * (av - b[i]) / k));
+      return b[i] * (1 - h) + av * h + k * h * (1 - h);
+    }) as Vec3;
+  }},
+  { name: 'quantize', arity: 2, glsl: ([a, b]) => `quantize3(${a},${b})`, js: ([a, b]) => {
+    return a.map((v, i) => {
+      const q = Math.max(Math.abs(b[i]), 0.001);
+      return Math.floor(v * q) / q;
+    }) as Vec3;
+  }},
+
+  // --- Ternary (4) ---
+  { name: 'transform', arity: 3, glsl: ([a, b, c]) => `(rot_z(rot_y(rot_x(${a},${b}.x),${b}.y),${b}.z)*${c})`, js: ([a, b, c]) => {
+    const cx = Math.cos(b[0]), sx = Math.sin(b[0]);
+    const v1: Vec3 = [a[0], a[1]*cx - a[2]*sx, a[1]*sx + a[2]*cx];
+    const cy = Math.cos(b[1]), sy = Math.sin(b[1]);
+    const v2: Vec3 = [v1[0]*cy + v1[2]*sy, v1[1], -v1[0]*sy + v1[2]*cy];
+    const cz = Math.cos(b[2]), sz = Math.sin(b[2]);
+    const v3r: Vec3 = [v2[0]*cz - v2[1]*sz, v2[0]*sz + v2[1]*cz, v2[2]];
+    return v3mul(v3r, c);
+  }},
+  { name: 'mix_v', arity: 3, glsl: ([a, b, c]) => `mix(${a},${b},${c})`, js: ([a, b, c]) => {
+    return a.map((av, i) => av + (b[i] - av) * c[i]) as Vec3;
+  }},
+  { name: 'clamp_v', arity: 3, glsl: ([a, b, c]) => `clamp(${a},min(${b},${c}),max(${b},${c}))`, js: ([a, b, c]) => {
+    return a.map((v, i) => {
+      const lo = Math.min(b[i], c[i]);
+      const hi = Math.max(b[i], c[i]);
+      return Math.max(lo, Math.min(hi, v));
+    }) as Vec3;
+  }},
+  { name: 'smoothstep_v', arity: 3, glsl: ([a, b, c]) => `smoothstep(min(${b},${c}),max(${b},${c})+vec3(0.001),${a})`, js: ([a, b, c]) => {
+    return a.map((v, i) => {
+      const lo = Math.min(b[i], c[i]);
+      const hi = Math.max(b[i], c[i]) + 0.001;
+      const t = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+      return t * t * (3 - 2 * t);
+    }) as Vec3;
   }},
 ];
 
@@ -247,7 +338,7 @@ export function createRandomGenome(cols: number, rows: number): CGPGenome {
   const totalNodes = inputSlots + nodes.length;
   const outputIndices = Array.from({ length: NUM_OUTPUTS }, () => randInt(totalNodes));
 
-  return { cols, rows, nodes, outputIndices, constants, version: 3 };
+  return { cols, rows, nodes, outputIndices, constants, version: 4 };
 }
 
 export function cloneGenome(g: CGPGenome): CGPGenome {
@@ -256,6 +347,54 @@ export function cloneGenome(g: CGPGenome): CGPGenome {
     rows: g.rows,
     nodes: g.nodes.map(n => ({ funcIdx: n.funcIdx, inputs: [...n.inputs] })),
     outputIndices: [...g.outputIndices],
+    constants: g.constants.map(c => [...c] as [number, number, number]),
+    version: g.version,
+  };
+}
+
+// --- Resize genome to larger grid ---
+
+export function resizeGenome(g: CGPGenome, newCols: number, newRows: number): CGPGenome {
+  const oldCols = g.cols, oldRows = g.rows;
+  if (newCols === oldCols && newRows === oldRows) return cloneGenome(g);
+  if (newCols < oldCols || newRows < oldRows) return createRandomGenome(newCols, newRows);
+
+  const slots = numInputSlots(g);
+
+  // Build old→new index mapping (input slots stay the same)
+  const indexMap = new Map<number, number>();
+  for (let i = 0; i < slots; i++) indexMap.set(i, i);
+  for (let c = 0; c < oldCols; c++) {
+    for (let r = 0; r < oldRows; r++) {
+      indexMap.set(slots + c * oldRows + r, slots + c * newRows + r);
+    }
+  }
+
+  // Build new nodes: existing nodes get remapped, new positions get random filler
+  const newNodes: CGPNode[] = [];
+  for (let c = 0; c < newCols; c++) {
+    for (let r = 0; r < newRows; r++) {
+      if (c < oldCols && r < oldRows) {
+        const oldNode = g.nodes[c * oldRows + r];
+        newNodes.push({
+          funcIdx: oldNode.funcIdx,
+          inputs: oldNode.inputs.map(inp => indexMap.get(inp) ?? inp),
+        });
+      } else {
+        const maxSource = slots + c * newRows;
+        newNodes.push({
+          funcIdx: randInt(FUNCTIONS.length),
+          inputs: Array.from({ length: MAX_ARITY }, () => randInt(maxSource)),
+        });
+      }
+    }
+  }
+
+  return {
+    cols: newCols,
+    rows: newRows,
+    nodes: newNodes,
+    outputIndices: g.outputIndices.map(idx => indexMap.get(idx) ?? idx),
     constants: g.constants.map(c => [...c] as [number, number, number]),
     version: g.version,
   };
@@ -283,7 +422,7 @@ export function getActiveNodes(g: CGPGenome): Set<number> {
 
 // --- Mutation ---
 
-const GENES_PER_NODE = 1 + MAX_ARITY; // 1 funcIdx + 2 inputs = 3
+const GENES_PER_NODE = 1 + MAX_ARITY; // 1 funcIdx + 3 inputs = 4
 
 export function mutateGenome(parent: CGPGenome, numMutations: number): CGPGenome {
   const g = cloneGenome(parent);
@@ -352,8 +491,21 @@ function mutateOneGene(
 // --- Genome version migration ---
 
 export function migrateGenome(g: CGPGenome): CGPGenome {
-  if (g.version === 3) return g;
-  // v1/v2 → v3: clean break, replace with random genome
+  if (g.version === 4) return g;
+  if (g.version === 3) {
+    // v3 → v4: pad node inputs from 2 to 3 (MAX_ARITY bump)
+    return {
+      ...g,
+      nodes: g.nodes.map(n => ({
+        funcIdx: n.funcIdx,
+        inputs: n.inputs.length >= MAX_ARITY
+          ? [...n.inputs]
+          : [...n.inputs, ...Array(MAX_ARITY - n.inputs.length).fill(n.inputs[0] ?? 0)],
+      })),
+      version: 4,
+    };
+  }
+  // v1/v2 → v4: clean break, replace with random genome
   return createRandomGenome(g.cols, g.rows);
 }
 
@@ -494,6 +646,46 @@ vec3 rgb2hsv(vec3 c) {
   float e = 1.0e-10;
   return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
 }
+vec3 cylindrical(vec3 a) {
+  return vec3(length(a.xy), atan(a.y, a.x), a.z);
+}
+vec3 safeexp3(vec3 a) {
+  return exp(clamp(a, -4.0, 4.0));
+}
+vec3 kaleidoscope3(vec3 a, vec3 b) {
+  float n = floor(clamp(abs(b.x) * 3.0 + 2.0, 2.0, 12.0));
+  float sector = 6.28318530 / n;
+  float angle = atan(a.y, a.x);
+  float r = length(a.xy);
+  angle = mod(angle + 3.14159265, sector);
+  angle = abs(angle - sector * 0.5);
+  return vec3(r * cos(angle), r * sin(angle), a.z);
+}
+vec3 repeat3(vec3 a, vec3 b) {
+  vec3 p = max(abs(b), vec3(0.001));
+  return mod(a + p * 0.5, p) - p * 0.5;
+}
+vec3 rotate_xyz3(vec3 a, vec3 b) {
+  return rot_z(rot_y(rot_x(a, b.x), b.y), b.z);
+}
+vec3 fold3(vec3 a, vec3 b) {
+  vec3 n = safeNormalize(b);
+  return a - 2.0 * min(dot(a, n), 0.0) * n;
+}
+vec3 smin3(vec3 a, vec3 b) {
+  float k = 0.3;
+  vec3 h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+  return mix(b, a, h) - k * h * (1.0 - h);
+}
+vec3 smax3(vec3 a, vec3 b) {
+  float k = 0.3;
+  vec3 h = clamp(0.5 + 0.5 * (a - b) / k, 0.0, 1.0);
+  return mix(b, a, h) + k * h * (1.0 - h);
+}
+vec3 quantize3(vec3 a, vec3 b) {
+  vec3 q = max(abs(b), vec3(0.001));
+  return floor(a * q) / q;
+}
 `;
 
 export function compileToGLSL(g: CGPGenome): { vertexShader: string; fragmentShader: string } {
@@ -541,7 +733,7 @@ void main() {
   float u = position.x;
   float v = position.y;
   float d = length(position.xy) / 3.14159;
-  float t = mod(time, 6.28318530) - 3.14159265;
+  float t = time;
   float a = atan(v, u);
 
   // Bundled vec3 inputs

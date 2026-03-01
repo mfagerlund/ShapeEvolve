@@ -1,7 +1,7 @@
 import {
   collection, doc, addDoc, updateDoc, deleteDoc, getDoc, getDocs,
-  query, where, orderBy, serverTimestamp, increment,
-  type DocumentData,
+  query, where, orderBy, serverTimestamp, increment, limit, startAfter,
+  type DocumentData, type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { migrateGenome, type CGPGenome } from './cgp';
@@ -94,6 +94,29 @@ export async function getUserShapes(userId: string): Promise<ShapeDoc[]> {
     } catch { /* leave as-is */ }
     return data;
   });
+}
+
+export async function getPublicShapes(lastDoc?: QueryDocumentSnapshot): Promise<{
+  shapes: ShapeDoc[];
+  lastDoc: QueryDocumentSnapshot | null;
+}> {
+  const q = lastDoc
+    ? query(shapesCol, where('public', '==', true), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(20))
+    : query(shapesCol, where('public', '==', true), orderBy('createdAt', 'desc'), limit(20));
+  const snap = await getDocs(q);
+  const shapes = snap.docs.map(d => {
+    const data = { id: d.id, ...d.data() } as ShapeDoc;
+    try {
+      const genome = JSON.parse(data.genome);
+      const migrated = migrateGenome(genome);
+      if (migrated !== genome) data.genome = JSON.stringify(migrated);
+    } catch { /* leave as-is */ }
+    return data;
+  });
+  return {
+    shapes,
+    lastDoc: snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null,
+  };
 }
 
 export async function deleteShape(shapeId: string, userId: string): Promise<void> {
