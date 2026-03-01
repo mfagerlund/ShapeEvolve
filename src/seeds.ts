@@ -30,6 +30,7 @@ export class GenomeBuilder {
   readonly UVT: TraceId;  // vec3(u, v, t)
   readonly UVA: TraceId;  // vec3(u, v, a)
   readonly DAT: TraceId;  // vec3(d, a, t)
+  readonly UVT2: TraceId; // vec3(u, v, t2)
 
   constructor() {
     this.UV0 = this.addTrace({ type: 'input', inputIdx: 0 });
@@ -37,6 +38,7 @@ export class GenomeBuilder {
     this.UVT = this.addTrace({ type: 'input', inputIdx: 2 });
     this.UVA = this.addTrace({ type: 'input', inputIdx: 3 });
     this.DAT = this.addTrace({ type: 'input', inputIdx: 4 });
+    this.UVT2 = this.addTrace({ type: 'input', inputIdx: 5 });
   }
 
   private addTrace(entry: TraceEntry): TraceId {
@@ -114,12 +116,17 @@ export class GenomeBuilder {
   smin(a: TraceId, b: TraceId): TraceId { return this.binary('smin', a, b); }
   smax(a: TraceId, b: TraceId): TraceId { return this.binary('smax', a, b); }
   quantize(a: TraceId, b: TraceId): TraceId { return this.binary('quantize', a, b); }
+  pulse(a: TraceId, b: TraceId): TraceId { return this.binary('pulse', a, b); }
 
   // --- Ternary operations (4) ---
   transform(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('transform', a, b, c); }
   mix_v(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('mix_v', a, b, c); }
   clamp_v(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('clamp_v', a, b, c); }
   smoothstep_v(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('smoothstep_v', a, b, c); }
+  fma(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('fma', a, b, c); }
+  select(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('select', a, b, c); }
+  remap(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('remap', a, b, c); }
+  rot_axis(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('rot_axis', a, b, c); }
 
   private unary(name: string, a: TraceId): TraceId {
     return this.addTrace({ type: 'op', funcIdx: this.funcIndex(name), inputs: [a] });
@@ -232,7 +239,7 @@ export class GenomeBuilder {
       return gi;
     });
 
-    return { cols, rows, nodes: gridNodes, outputIndices, constants: genomeConstants, version: 4 };
+    return { cols, rows, nodes: gridNodes, outputIndices, constants: genomeConstants, version: 5 };
   }
 }
 
@@ -243,7 +250,7 @@ export type SeedFactory = (cols: number, rows: number) => CGPGenome;
 // Helper: build a unit sphere from rotation chains.
 // rot_y((1,0,0), v/2) → tilt from equator, then rot_z by u → sweep longitude.
 // Returns the sphere position TraceId.
-function buildSphere(b: GenomeBuilder): TraceId {
+export function buildSphere(b: GenomeBuilder): TraceId {
   const base = b.c(1, 0, 0);
   const halfUV = b.mul(b.UV0, b.cu(0.5));     // vec3(u/2, v/2, 0)
   const latAngle = b.swizzle_yzx(halfUV);     // vec3(v/2, 0, u/2) — .x = v/2
@@ -452,6 +459,45 @@ function cubeSeed(cols: number, rows: number): CGPGenome {
   return b.build({ pos, col }, cols, rows);
 }
 
+// --- 13. Nautilus ---
+// Demonstrates: exp, uniform_scale, rotate_y, rotate_z, pow, dot_v, mix_v
+// Logarithmic spiral with growing tube cross-section and natural stripe pattern
+function nautilusSeed(cols: number, rows: number): CGPGenome {
+  const b = new GenomeBuilder();
+
+  // Tube cross-section: rotate (0.75, 0, 0) by v around Y axis
+  // Ratio 0.75 matches original (R*(exp(0.3π)-1)*0.475 ≈ 0.744R)
+  // and exceeds the self-intersection threshold of (g-1)/(g+1) ≈ 0.44
+  const tubeCenter = b.c(0.75, 0, 0);
+  const vAngle = b.swizzle_yzx(b.UV0);              // (v, 0, u) — .x = v
+  const tubePoint = b.rotate_y(tubeCenter, vAngle);  // circle in XZ plane
+
+  // Add major radius offset → torus-like cross section
+  const shellSection = b.add(tubePoint, b.c(1, 0, 0));
+
+  // Sweep around Z by spiralAngle = 3u (3 full turns over [-π, π])
+  const spiralAngle = b.mul(b.UV0, b.c(3, 0, 0));
+  const rotated = b.rotate_z(shellSection, spiralAngle);
+
+  // Logarithmic growth: R = exp(0.45u), ratio ≈ 17:1 from inner to outer
+  const kAngle = b.mul(b.UV0, b.c(0.45, 0, 0));     // (0.45u, 0, 0)
+  const Rvec = b.exp(kAngle);                         // (R, 1, 1)
+  const scaled = b.uniform_scale(rotated, Rvec);
+  const pos = b.mul(scaled, b.cu(0.25));
+
+  // Color: nautilus stripe pattern — sin(30u)^4 as blend factor
+  const freqAngle = b.mul(b.UV0, b.c(300, 0, 0));
+  const stripeIntensity = b.pow(b.sin(freqAngle), b.cu(4));
+  const sVec = b.dot_v(stripeIntensity, b.c(1, 0, 0)); // broadcast x → all
+
+  // Pre-tri() colors: tri(x) = 2x for x ∈ [0, 0.5]
+  // Base (0.95, 0.90, 0.80) → pre-tri (0.475, 0.45, 0.40)
+  // Stripe (0.60, 0.30, 0.10) → pre-tri (0.30, 0.15, 0.05)
+  const col = b.mix_v(b.c(0.475, 0.45, 0.40), b.c(0.30, 0.15, 0.05), sVec);
+
+  return b.build({ pos, col }, cols, rows);
+}
+
 export interface Preset {
   name: string;
   create: SeedFactory;
@@ -470,4 +516,5 @@ export const PRESETS: Preset[] = [
   { name: 'Organic', create: organicSeed },
   { name: 'Twist', create: twistSeed },
   { name: 'Cube', create: cubeSeed },
+  { name: 'Nautilus', create: nautilusSeed },
 ];

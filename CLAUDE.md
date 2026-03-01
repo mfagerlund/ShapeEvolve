@@ -70,6 +70,8 @@ ShapeEvolve is an interactive 3D shape evolution app using **Cartesian Genetic P
 
 - **Never use `window.confirm()` or `window.alert()`** — always use the custom `confirm()` from `src/components/ConfirmDialog.tsx`. It returns a `Promise<boolean>` and renders an in-app modal that matches the dark theme.
 - Grid cells are created imperatively in `grid.ts` (DOM + Three.js canvases). Preact components interact with them via refs.
+- **CRITICAL: NEVER insert new functions into the middle of the `FUNCTIONS` array in `cgp.ts`.** Saved genomes store `funcIdx` as integer indices. Inserting anywhere but the end shifts all subsequent indices, silently corrupting every saved genome that references those functions. **ALWAYS append new functions at the end of the array.**
+- **CRITICAL: NEVER reorder, remove, or insert entries into `INPUT_NAMES` except at the end.** Saved genomes reference inputs by index. Shifting indices requires a version migration in `migrateGenome()`.
 
 ## V2 Roadmap
 

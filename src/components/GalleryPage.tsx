@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { route } from 'preact-router';
 import { getPublicShapes, type ShapeDoc } from '../db';
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
+import { ShapeViewerOverlay } from './ShapeViewerOverlay';
 
 export function GalleryPage() {
   const [shapes, setShapes] = useState<ShapeDoc[]>([]);
@@ -10,6 +11,7 @@ export function GalleryPage() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [viewGenome, setViewGenome] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -65,6 +67,16 @@ export function GalleryPage() {
                 ) : (
                   <div class="thumb-placeholder" />
                 )}
+                <button
+                  class="thumb-view-btn"
+                  title="View animated"
+                  onClick={(e) => { e.stopPropagation(); setViewGenome(shape.genome); }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+                    <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                  </svg>
+                </button>
               </div>
               <div class="shape-card-info">
                 <div class="shape-card-name">{shape.name}</div>
@@ -102,6 +114,10 @@ export function GalleryPage() {
             {loadingMore ? 'Loading...' : 'Load More'}
           </button>
         </div>
+      )}
+
+      {viewGenome && (
+        <ShapeViewerOverlay genome={viewGenome} onClose={() => setViewGenome(null)} />
       )}
     </div>
   );

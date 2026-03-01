@@ -2,7 +2,7 @@
 
 export type Vec3 = [number, number, number];
 
-export const INPUT_NAMES = ['uv0', 'uvd', 'uvt', 'uva', 'dat'] as const;
+export const INPUT_NAMES = ['uv0', 'uvd', 'uvt', 'uva', 'dat', 'uvt2'] as const;
 export const OUTPUT_NAMES = ['pos', 'col'] as const;
 export const NUM_INPUTS = INPUT_NAMES.length;
 export const NUM_OUTPUTS = OUTPUT_NAMES.length;
@@ -90,6 +90,11 @@ export interface CGPFunction {
   js: (args: Vec3[]) => Vec3;
 }
 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !! NEVER insert or reorder entries in this array. Saved genomes store  !!
+// !! funcIdx as integers — inserting in the middle silently corrupts     !!
+// !! every saved genome. ONLY append new functions at the END.           !!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 export const FUNCTIONS: CGPFunction[] = [
   // --- Unary (14) ---
   { name: 'sin', arity: 1, glsl: ([a]) => `sin(${a})`, js: ([a]) => v3map(a, Math.sin) },
@@ -308,6 +313,14 @@ export const FUNCTIONS: CGPFunction[] = [
       a[2] * cos_a + cross_ka[2] * sin_a + axis[2] * dot_ak * (1 - cos_a),
     ];
   }},
+
+  // --- Appended (index 53+) — ONLY add new functions here, at the END ---
+  { name: 'pulse', arity: 2, glsl: ([a, b]) => `pulse3(${a},${b})`, js: ([a, b]) => {
+    return a.map((v, i) => {
+      const p = 0.5 + 0.5 * Math.cos(b[i] * 6.28318);
+      return v * p * p * p * p;
+    }) as Vec3;
+  }},
 ];
 
 // --- Genome ---
@@ -361,7 +374,7 @@ export function createRandomGenome(cols: number, rows: number): CGPGenome {
   const totalNodes = inputSlots + nodes.length;
   const outputIndices = Array.from({ length: NUM_OUTPUTS }, () => randInt(totalNodes));
 
-  return { cols, rows, nodes, outputIndices, constants, version: 4 };
+  return { cols, rows, nodes, outputIndices, constants, version: 5 };
 }
 
 export function cloneGenome(g: CGPGenome): CGPGenome {
@@ -571,10 +584,22 @@ function mutateOneGene(
 // --- Genome version migration ---
 
 export function migrateGenome(g: CGPGenome): CGPGenome {
-  if (g.version === 4) return g;
+  if (g.version === 5) return g;
+  if (g.version === 4) {
+    // v4 → v5: new input at index 5 (uvt2), shift all references >= 5
+    return migrateGenome({
+      ...g,
+      nodes: g.nodes.map(n => ({
+        funcIdx: n.funcIdx,
+        inputs: n.inputs.map(i => i >= 5 ? i + 1 : i),
+      })),
+      outputIndices: g.outputIndices.map(i => i >= 5 ? i + 1 : i),
+      version: 5,
+    });
+  }
   if (g.version === 3) {
     // v3 → v4: pad node inputs from 2 to 3 (MAX_ARITY bump)
-    return {
+    return migrateGenome({
       ...g,
       nodes: g.nodes.map(n => ({
         funcIdx: n.funcIdx,
@@ -583,9 +608,9 @@ export function migrateGenome(g: CGPGenome): CGPGenome {
           : [...n.inputs, ...Array(MAX_ARITY - n.inputs.length).fill(n.inputs[0] ?? 0)],
       })),
       version: 4,
-    };
+    });
   }
-  // v1/v2 → v4: clean break, replace with random genome
+  // v1/v2 → v5: clean break, replace with random genome
   return createRandomGenome(g.cols, g.rows);
 }
 
@@ -776,6 +801,10 @@ vec3 rodrigues3(vec3 v, vec3 axis, float angle) {
   float c = cos(angle), s = sin(angle);
   return v * c + cross(k, v) * s + k * dot(k, v) * (1.0 - c);
 }
+vec3 pulse3(vec3 a, vec3 b) {
+  vec3 p = 0.5 + 0.5 * cos(b * 6.28318);
+  return a * p * p * p * p;
+}
 `;
 
 export function compileToGLSL(g: CGPGenome): { vertexShader: string; fragmentShader: string } {
@@ -823,7 +852,8 @@ void main() {
   float u = position.x;
   float v = position.y;
   float d = length(position.xy) / 3.14159;
-  float t = time;
+  float t = sin(time * 1.5) * 3.14159;
+  float t2 = sin(time * 3.0) * 3.14159;
   float a = atan(v, u);
 
   // Bundled vec3 inputs
@@ -832,6 +862,7 @@ void main() {
   vec3 uvt = vec3(u, v, t);
   vec3 uva = vec3(u, v, a);
   vec3 dat = vec3(d, a, t);
+  vec3 uvt2 = vec3(u, v, t2);
 
 ${lines.join('\n')}
 
@@ -944,9 +975,11 @@ export function genomeToExpression(g: CGPGenome): { pos: string; col: string } {
 
 // --- JS evaluation (for debugging) ---
 
-export function evaluateGenome(g: CGPGenome, u: number, v: number, d: number, t: number): Vec3[] {
+export function evaluateGenome(g: CGPGenome, u: number, v: number, d: number, rawTime: number): Vec3[] {
   const slots = numInputSlots(g);
   const values: Vec3[] = new Array(slots + g.nodes.length);
+  const t = Math.sin(rawTime * 1.5) * Math.PI;
+  const t2 = Math.sin(rawTime * 3.0) * Math.PI;
   const a = Math.atan2(v, u);
 
   // Bundled vec3 inputs
@@ -955,6 +988,7 @@ export function evaluateGenome(g: CGPGenome, u: number, v: number, d: number, t:
   values[2] = [u, v, t];    // uvt
   values[3] = [u, v, a];    // uva
   values[4] = [d, a, t];    // dat
+  values[5] = [u, v, t2];   // uvt2
 
   for (let i = 0; i < g.constants.length; i++) {
     values[NUM_INPUTS + i] = [...g.constants[i]] as Vec3;

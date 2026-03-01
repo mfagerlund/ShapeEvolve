@@ -11,6 +11,8 @@ import { saveShape, updateShape } from '../db';
 import { uploadThumbnail, captureThumbnail } from '../storage';
 import { SaveDialog } from './SaveDialog';
 import { CodePanel } from './CodePanel';
+import { SeedPicker } from './SeedPicker';
+import { ShapeViewerOverlay } from './ShapeViewerOverlay';
 
 function showToast(message: string) {
   const toast = document.getElementById('toast');
@@ -31,12 +33,21 @@ export function EvolvePage() {
   const [numMutations, setNumMutations] = useState(2);
   const [cgpCols, setCgpCols] = useState(10);
   const [cgpRows, setCgpRows] = useState(6);
-  const [presetIdx, setPresetIdx] = useState(0);
+  const [presetIdx, setPresetIdx] = useState(() => {
+    const saved = localStorage.getItem('seedPreset');
+    if (saved) {
+      const idx = PRESETS.findIndex(p => p.name === saved);
+      if (idx !== -1) return idx;
+    }
+    const nautIdx = PRESETS.findIndex(p => p.name === 'Nautilus');
+    return nautIdx !== -1 ? nautIdx : 0;
+  });
   const [showSave, setShowSave] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveIndex, setSaveIndex] = useState(0);
   const [maximizedIndex, setMaximizedIndex] = useState<number | null>(null);
   const [codeIndex, setCodeIndex] = useState<number | null>(null);
+  const [showSeedPicker, setShowSeedPicker] = useState(false);
 
   // Initialize grid once
   useEffect(() => {
@@ -56,11 +67,11 @@ export function EvolvePage() {
         setCgpCols(genome.cols);
         setCgpRows(genome.rows);
       } catch {
-        const seed = PRESETS[0].create(cgpCols, cgpRows);
+        const seed = PRESETS[presetIdx >= 0 ? presetIdx : 0].create(cgpCols, cgpRows);
         genomes = createSeededPopulation(seed, numMutations);
       }
     } else {
-      const seed = PRESETS[0].create(cgpCols, cgpRows);
+      const seed = PRESETS[presetIdx >= 0 ? presetIdx : 0].create(cgpCols, cgpRows);
       genomes = createSeededPopulation(seed, numMutations);
     }
     stateRef.current = createGrid(container, genomes);
@@ -181,6 +192,7 @@ export function EvolvePage() {
         setMaximizedIndex(null);
         setShowSave(false);
         setCodeIndex(null);
+        setShowSeedPicker(false);
         return;
       }
       if (e.key === 'Enter' || e.key === ' ') {
@@ -277,15 +289,16 @@ export function EvolvePage() {
     showToast(`Generation ${state.generation}`);
   }
 
-  function onSeedChange(e: Event) {
-    const val = (e.target as HTMLSelectElement).value;
+  function onSeedSelect(val: number | 'random') {
+    setShowSeedPicker(false);
     if (val === 'random') {
       setPresetIdx(-1);
+      localStorage.removeItem('seedPreset');
       rebuildGrid(cgpCols, cgpRows, 'random', numMutations);
     } else {
-      const idx = parseInt(val, 10);
-      setPresetIdx(idx);
-      rebuildGrid(cgpCols, cgpRows, idx, numMutations);
+      setPresetIdx(val);
+      localStorage.setItem('seedPreset', PRESETS[val].name);
+      rebuildGrid(cgpCols, cgpRows, val, numMutations);
     }
   }
 
@@ -390,12 +403,9 @@ export function EvolvePage() {
       <div class="settings-bar">
         <div class="setting">
           <label>Seed</label>
-          <select onChange={onSeedChange} value={presetIdx >= 0 ? String(presetIdx) : 'random'}>
-            {PRESETS.map((p, i) => (
-              <option key={i} value={String(i)}>{p.name}</option>
-            ))}
-            <option value="random">Random</option>
-          </select>
+          <button class="btn seed-picker-btn" onClick={() => setShowSeedPicker(true)}>
+            {presetIdx >= 0 ? PRESETS[presetIdx].name : 'Random'} ▾
+          </button>
         </div>
         <div class="setting">
           <label>Mutations</label>
@@ -429,31 +439,18 @@ export function EvolvePage() {
       />
 
       {maximizedIndex !== null && stateRef.current && (
-        <div class="maximize-overlay" onClick={() => setMaximizedIndex(null)}>
-          <div class="maximize-viewer" onClick={(e) => e.stopPropagation()}>
-            <canvas ref={(el) => {
-              if (!el || !stateRef.current) return;
-              const genome = stateRef.current.genomes[maximizedIndex];
-              // Import ShapeViewer to create a dedicated large viewer
-              import('../viewer').then(({ ShapeViewer }) => {
-                const viewer = new ShapeViewer(el, maximizedIndex);
-                viewer.setGenome(genome);
-                viewer.resize(el.clientWidth, el.clientHeight);
-                function animate() {
-                  if (!el?.isConnected) { viewer.dispose(); return; }
-                  viewer.render();
-                  requestAnimationFrame(animate);
-                }
-                requestAnimationFrame(animate);
-              });
-            }} />
-            <button class="maximize-close" onClick={() => setMaximizedIndex(null)}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-        </div>
+        <ShapeViewerOverlay
+          genome={stateRef.current.genomes[maximizedIndex]}
+          onClose={() => setMaximizedIndex(null)}
+        />
+      )}
+
+      {showSeedPicker && (
+        <SeedPicker
+          currentIdx={presetIdx}
+          onSelect={onSeedSelect}
+          onClose={() => setShowSeedPicker(false)}
+        />
       )}
 
       {showSave && (
