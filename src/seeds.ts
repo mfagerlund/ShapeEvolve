@@ -117,6 +117,10 @@ export class GenomeBuilder {
   smax(a: TraceId, b: TraceId): TraceId { return this.binary('smax', a, b); }
   quantize(a: TraceId, b: TraceId): TraceId { return this.binary('quantize', a, b); }
   pulse(a: TraceId, b: TraceId): TraceId { return this.binary('pulse', a, b); }
+  breathe(a: TraceId, b: TraceId): TraceId { return this.binary('breathe', a, b); }
+  wave_displace(a: TraceId, b: TraceId): TraceId { return this.binary('wave_displace', a, b); }
+  orbit(a: TraceId, b: TraceId): TraceId { return this.binary('orbit', a, b); }
+  hue_shift(a: TraceId, b: TraceId): TraceId { return this.binary('hue_shift', a, b); }
 
   // --- Ternary operations (4) ---
   transform(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('transform', a, b, c); }

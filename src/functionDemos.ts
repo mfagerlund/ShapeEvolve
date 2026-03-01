@@ -274,7 +274,7 @@ const BINARY_DEMOS: FunctionDemo[] = [
     'pos = uniform_scale(sphere, add(cu(1), mul(sin(mul(sphere,cu(6))),cu(0.2))))',
     (b, s) => ({
       pos: b.uniform_scale(s, b.add(b.cu(1), b.mul(b.sin(b.mul(s, b.cu(6))), b.cu(0.2)))),
-      col: b.abs(s),
+      col: b.add(b.mul(b.abs(s), b.c(0.3, 0.5, 0.4)), b.c(0.1, 0.2, 0.3)),
     })),
 
   demo('rotate_x', 2,
@@ -403,6 +403,38 @@ const BINARY_DEMOS: FunctionDemo[] = [
     (b, s) => ({
       pos: b.mul(s, b.pulse(s, b.cu(3))),
       col: b.pulse(b.abs(s), b.cu(2)),
+    })),
+
+  demo('breathe', 2,
+    'Gentle sine-wave scaling. Shapes inhale/exhale when driven by time.',
+    'pos = breathe(sphere, UVT)',
+    (b, s) => ({
+      pos: b.breathe(s, b.UVT),
+      col: b.abs(s),
+    })),
+
+  demo('wave_displace', 2,
+    'Traveling surface ripples. Position-dependent phase creates moving waves.',
+    'pos = wave_displace(sphere, UVT)',
+    (b, s) => ({
+      pos: b.wave_displace(s, b.UVT),
+      col: b.abs(b.sub(s, b.wave_displace(s, b.UVT))),
+    })),
+
+  demo('orbit', 2,
+    'Rotates around Y by length(b)*TAU. Continuous spinning when driven by time.',
+    'pos = orbit(sphere, DAT)',
+    (b, s) => ({
+      pos: b.orbit(s, b.DAT),
+      col: b.abs(s),
+    })),
+
+  demo('hue_shift', 2,
+    'Shifts RGB hue by b.x. Cycles colors when driven by time.',
+    'col = hue_shift(abs(sphere), DAT)',
+    (b, s) => ({
+      pos: s,
+      col: b.hue_shift(b.abs(s), b.DAT),
     })),
 ];
 

@@ -321,6 +321,39 @@ export const FUNCTIONS: CGPFunction[] = [
       return v * p * p * p * p;
     }) as Vec3;
   }},
+  { name: 'breathe', arity: 2, glsl: ([a, b]) => `breathe3(${a},${b})`, js: ([a, b]) => {
+    return a.map((v, i) => v * (1.0 + 0.3 * Math.sin(b[i] * 6.28318))) as Vec3;
+  }},
+  { name: 'wave_displace', arity: 2, glsl: ([a, b]) => `wave_displace3(${a},${b})`, js: ([a, b]) => {
+    return a.map((v, i) => v + 0.15 * Math.sin(v * 4.0 + b[i] * 6.28318)) as Vec3;
+  }},
+  { name: 'orbit', arity: 2, glsl: ([a, b]) => `orbit3(${a},${b})`, js: ([a, b]) => {
+    const angle = Math.sqrt(b[0]*b[0] + b[1]*b[1] + b[2]*b[2]) * 6.28318;
+    const c = Math.cos(angle), s = Math.sin(angle);
+    return [a[0]*c + a[2]*s, a[1], -a[0]*s + a[2]*c];
+  }},
+  { name: 'hue_shift', arity: 2, glsl: ([a, b]) => `hue_shift3(${a},${b})`, js: ([a, b]) => {
+    // Convert RGB to HSV, shift hue by b.x, convert back
+    const r = Math.max(0, Math.min(1, a[0]));
+    const g = Math.max(0, Math.min(1, a[1]));
+    const bl = Math.max(0, Math.min(1, a[2]));
+    const mx = Math.max(r, g, bl), mn = Math.min(r, g, bl), d = mx - mn;
+    const val = mx, sat = mx < 1e-8 ? 0 : d / mx;
+    let hue = 0;
+    if (d > 1e-8) {
+      if (mx === r) hue = ((g - bl) / d + 6) % 6 / 6;
+      else if (mx === g) hue = ((bl - r) / d + 2) / 6;
+      else hue = ((r - g) / d + 4) / 6;
+    }
+    hue = ((hue + b[0]) % 1 + 1) % 1;
+    const c2 = val * sat, hp = hue * 6, x2 = c2 * (1 - Math.abs(hp % 2 - 1));
+    let ro = 0, go = 0, bo = 0;
+    if (hp < 1) { ro = c2; go = x2; } else if (hp < 2) { ro = x2; go = c2; }
+    else if (hp < 3) { go = c2; bo = x2; } else if (hp < 4) { go = x2; bo = c2; }
+    else if (hp < 5) { ro = x2; bo = c2; } else { ro = c2; bo = x2; }
+    const m = val - c2;
+    return [ro + m, go + m, bo + m];
+  }},
 ];
 
 // --- Genome ---
@@ -460,6 +493,13 @@ export function getActiveNodes(g: CGPGenome): Set<number> {
 
 const GENES_PER_NODE = 1 + MAX_ARITY; // 1 funcIdx + 3 inputs = 4
 const INSERT_NODE_RATE = 0.2;
+const INJECT_TIME_RATE = 0.15;
+
+// Input indices that carry time in their .z component
+const TIME_INPUT_INDICES = [2, 4, 5]; // uvt, dat, uvt2
+
+// Function names suitable for time modulation (smooth, bounded behavior)
+const TIME_MOD_FUNCTIONS = ['mul', 'add', 'pulse', 'breathe', 'wave_displace', 'fma'];
 
 export function mutateGenome(parent: CGPGenome, numMutations: number): CGPGenome {
   const g = cloneGenome(parent);
@@ -473,6 +513,11 @@ export function mutateGenome(parent: CGPGenome, numMutations: number): CGPGenome
   // All mutations use Goldman-Punch: each one guaranteed to hit an active gene
   for (let m = 0; m < numMutations; m++) {
     const activeNodes = getActiveNodes(g);
+
+    // Try time-injection mutation: splice a time-modulation node into active graph
+    if (Math.random() < INJECT_TIME_RATE && tryInjectTime(g, slots, activeNodes)) {
+      continue;
+    }
 
     // Try insert-node mutation (NEAT-style) with some probability
     if (Math.random() < INSERT_NODE_RATE && tryInsertNode(g, slots, activeNodes)) {
@@ -490,6 +535,66 @@ export function mutateGenome(parent: CGPGenome, numMutations: number): CGPGenome
   }
 
   return g;
+}
+
+/** Time-injection mutation: splice a time-modulating node into an active connection.
+ *  Like tryInsertNode, but specifically wires a time-carrying input as the second
+ *  operand, guaranteeing that the mutation introduces time-dependency. */
+function tryInjectTime(g: CGPGenome, slots: number, activeNodes: Set<number>): boolean {
+  // Collect active CGP nodes (not inputs/constants)
+  const activeCGP: number[] = [];
+  for (const idx of activeNodes) {
+    if (idx >= slots) activeCGP.push(idx);
+  }
+  if (activeCGP.length === 0) return false;
+
+  // Pick a random active node N
+  const nIdx = activeCGP[randInt(activeCGP.length)];
+  const nLocal = nIdx - slots;
+  const nCol = Math.floor(nLocal / g.rows);
+  const node = g.nodes[nLocal];
+  const fn = FUNCTIONS[node.funcIdx];
+
+  // Pick a random input of N
+  const inputSlot = randInt(fn.arity);
+  const srcIdx = node.inputs[inputSlot];
+
+  // D must be in a column after S and before N
+  const minCol = srcIdx < slots ? 0 : Math.floor((srcIdx - slots) / g.rows) + 1;
+  const maxCol = nCol;
+  if (minCol >= maxCol) return false;
+
+  // Find dead nodes in valid columns
+  const candidates: number[] = [];
+  for (let c = minCol; c < maxCol; c++) {
+    for (let r = 0; r < g.rows; r++) {
+      const dIdx = slots + c * g.rows + r;
+      if (!activeNodes.has(dIdx)) candidates.push(dIdx);
+    }
+  }
+  if (candidates.length === 0) return false;
+
+  // Pick a dead node D
+  const dIdx = candidates[randInt(candidates.length)];
+  const dLocal = dIdx - slots;
+
+  // Choose time modulation function
+  const modFuncName = TIME_MOD_FUNCTIONS[randInt(TIME_MOD_FUNCTIONS.length)];
+  const modFuncIdx = FUNCTIONS.findIndex(f => f.name === modFuncName);
+  if (modFuncIdx === -1) return false;
+
+  // Choose a time-carrying input
+  const timeInput = TIME_INPUT_INDICES[randInt(TIME_INPUT_INDICES.length)];
+
+  // Wire D: input[0] = original source, input[1] = time input, input[2] = original (for ternary)
+  g.nodes[dLocal].funcIdx = modFuncIdx;
+  g.nodes[dLocal].inputs[0] = srcIdx;
+  g.nodes[dLocal].inputs[1] = timeInput;
+  g.nodes[dLocal].inputs[2] = srcIdx;
+
+  // Rewire N to route through D
+  node.inputs[inputSlot] = dIdx;
+  return true;
 }
 
 /** NEAT-style insert-node: splice a dead node into an active connection. */
@@ -804,6 +909,22 @@ vec3 rodrigues3(vec3 v, vec3 axis, float angle) {
 vec3 pulse3(vec3 a, vec3 b) {
   vec3 p = 0.5 + 0.5 * cos(b * 6.28318);
   return a * p * p * p * p;
+}
+vec3 breathe3(vec3 a, vec3 b) {
+  return a * (1.0 + 0.3 * sin(b * 6.28318));
+}
+vec3 wave_displace3(vec3 a, vec3 b) {
+  return a + 0.15 * sin(a * 4.0 + b * 6.28318);
+}
+vec3 orbit3(vec3 a, vec3 b) {
+  float angle = length(b) * 6.28318;
+  float c = cos(angle), s = sin(angle);
+  return vec3(a.x*c + a.z*s, a.y, -a.x*s + a.z*c);
+}
+vec3 hue_shift3(vec3 a, vec3 b) {
+  vec3 hsv = rgb2hsv(clamp(a, 0.0, 1.0));
+  hsv.x = fract(hsv.x + b.x);
+  return hsv2rgb(hsv);
 }
 `;
 
