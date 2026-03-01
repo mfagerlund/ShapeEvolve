@@ -23,10 +23,11 @@ export function EvolvePage() {
   const gridRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<GridState | null>(null);
   const animRef = useRef(0);
+  const pendingThumbnailRef = useRef<string | null>(null);
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [generation, setGeneration] = useState(0);
-  const [numMutations, setNumMutations] = useState(5);
+  const [numMutations, setNumMutations] = useState(2);
   const [cgpCols, setCgpCols] = useState(10);
   const [cgpRows, setCgpRows] = useState(6);
   const [presetIdx, setPresetIdx] = useState(0);
@@ -94,12 +95,28 @@ export function EvolvePage() {
     }
     container.innerHTML = '';
 
-    let genomes;
+    let genomes = createRandomPopulation(cols, rows);
     if (preset === 'random') {
-      genomes = createRandomPopulation(cols, rows);
+      // already set above
     } else {
-      const seed = PRESETS[preset].create(cols, rows);
-      genomes = createSeededPopulation(seed, mutations);
+      // Try current size, then progressively larger grids until seed fits
+      const sizes: [number, number][] = [[cols, rows], [10, 6], [16, 8], [24, 10]];
+      let usedCols = cols, usedRows = rows;
+      for (const [c, r] of sizes) {
+        if (c < cols || (c === cols && r < rows)) continue;
+        try {
+          const seed = PRESETS[preset].create(c, r);
+          genomes = createSeededPopulation(seed, mutations);
+          usedCols = c;
+          usedRows = r;
+          break;
+        } catch { /* grid too small, try next */ }
+      }
+      if (usedCols !== cols || usedRows !== rows) {
+        setCgpCols(usedCols);
+        setCgpRows(usedRows);
+        showToast(`Complexity increased to ${usedCols}x${usedRows}`);
+      }
     }
 
     stateRef.current = createGrid(container, genomes);
@@ -192,6 +209,13 @@ export function EvolvePage() {
           showToast('Sign in to save shapes');
           return;
         }
+        // Capture thumbnail now, before the dialog opens
+        const state = stateRef.current;
+        if (state) {
+          const viewer = state.viewers[idx];
+          viewer.render();
+          pendingThumbnailRef.current = captureThumbnail(viewer.canvas);
+        }
         setSaveIndex(idx);
         setShowSave(true);
       } else if (action === 'maximize') {
@@ -251,7 +275,7 @@ export function EvolvePage() {
     setCgpCols(c);
     setCgpRows(r);
     rebuildGrid(c, r, presetIdx >= 0 ? presetIdx : 'random', numMutations);
-    showToast(`Grid: ${c}x${r}`);
+    showToast(`Complexity: ${c}x${r}`);
   }
 
   function onMutationChange(e: Event) {
@@ -267,10 +291,10 @@ export function EvolvePage() {
     const saveIdx = saveIndex;
     setSaving(true);
     try {
-      // Force a render then capture thumbnail
-      const viewer = state.viewers[saveIdx];
-      viewer.render();
-      const dataURL = captureThumbnail(viewer.canvas);
+      // Use thumbnail captured at click time
+      const dataURL = pendingThumbnailRef.current
+        ?? (() => { const v = state.viewers[saveIdx]; v.render(); return captureThumbnail(v.canvas); })();
+      pendingThumbnailRef.current = null;
 
       // Save to Firestore first to get ID, then upload thumbnail
       const shapeId = await saveShape({
@@ -342,7 +366,7 @@ export function EvolvePage() {
           <input
             type="range"
             min="1"
-            max="20"
+            max="5"
             step="1"
             value={numMutations}
             onInput={onMutationChange}
@@ -350,7 +374,7 @@ export function EvolvePage() {
           <span class="value">{numMutations}</span>
         </div>
         <div class="setting">
-          <label>Grid</label>
+          <label>Complexity</label>
           <select onChange={onSizeChange} value={`${cgpCols},${cgpRows}`}>
             <option value="6,4">6x4</option>
             <option value="10,6">10x6</option>

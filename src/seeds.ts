@@ -1,7 +1,7 @@
-// Genome builder: convert hand-written parametric functions to CGP genomes
+// Genome builder: convert hand-written parametric functions to vec3 CGP genomes
 
 import {
-  CGPGenome, CGPNode, FUNCTIONS, NUM_INPUTS, NUM_OUTPUTS, OUTPUT_NAMES,
+  CGPGenome, CGPNode, FUNCTIONS, NUM_INPUTS, NUM_OUTPUTS,
   MAX_ARITY, randInt, randFloat, DEFAULT_NUM_CONSTANTS,
 } from './cgp';
 
@@ -9,14 +9,14 @@ import {
 
 type TraceEntry =
   | { type: 'input'; inputIdx: number }
-  | { type: 'const'; value: number }
+  | { type: 'const'; value: [number, number, number] }
   | { type: 'op'; funcIdx: number; inputs: number[] };
 
 type TraceId = number;
 
 interface SeedOutputs {
-  x: TraceId; y: TraceId; z: TraceId;
-  r: TraceId; g: TraceId; b: TraceId;
+  pos: TraceId;
+  col: TraceId;
 }
 
 // --- GenomeBuilder ---
@@ -24,19 +24,19 @@ interface SeedOutputs {
 export class GenomeBuilder {
   private traces: TraceEntry[] = [];
 
-  // Pre-registered input trace IDs
-  readonly U: TraceId;
-  readonly V: TraceId;
-  readonly D: TraceId;
-  readonly T: TraceId;
-  readonly A: TraceId;
+  // Pre-registered vec3 input trace IDs
+  readonly UV0: TraceId;  // vec3(u, v, 0)
+  readonly UVD: TraceId;  // vec3(u, v, d)
+  readonly UVT: TraceId;  // vec3(u, v, t)
+  readonly UVA: TraceId;  // vec3(u, v, a)
+  readonly DAT: TraceId;  // vec3(d, a, t)
 
   constructor() {
-    this.U = this.addTrace({ type: 'input', inputIdx: 0 });
-    this.V = this.addTrace({ type: 'input', inputIdx: 1 });
-    this.D = this.addTrace({ type: 'input', inputIdx: 2 });
-    this.T = this.addTrace({ type: 'input', inputIdx: 3 });
-    this.A = this.addTrace({ type: 'input', inputIdx: 4 });
+    this.UV0 = this.addTrace({ type: 'input', inputIdx: 0 });
+    this.UVD = this.addTrace({ type: 'input', inputIdx: 1 });
+    this.UVT = this.addTrace({ type: 'input', inputIdx: 2 });
+    this.UVA = this.addTrace({ type: 'input', inputIdx: 3 });
+    this.DAT = this.addTrace({ type: 'input', inputIdx: 4 });
   }
 
   private addTrace(entry: TraceEntry): TraceId {
@@ -50,62 +50,60 @@ export class GenomeBuilder {
     return idx;
   }
 
-  // --- Constants ---
-  c(value: number): TraceId {
+  // --- Vec3 Constants ---
+  c(x: number, y: number, z: number): TraceId {
     // Reuse existing constant if close enough
     for (let i = 0; i < this.traces.length; i++) {
       const t = this.traces[i];
-      if (t.type === 'const' && Math.abs(t.value - value) < 1e-8) return i;
+      if (t.type === 'const' &&
+        Math.abs(t.value[0] - x) < 1e-8 &&
+        Math.abs(t.value[1] - y) < 1e-8 &&
+        Math.abs(t.value[2] - z) < 1e-8) return i;
     }
-    return this.addTrace({ type: 'const', value });
+    return this.addTrace({ type: 'const', value: [x, y, z] });
   }
 
-  // --- Unary operations ---
+  // Uniform constant: same value for all 3 components
+  cu(v: number): TraceId { return this.c(v, v, v); }
+
+  // --- Unary operations (14) ---
   sin(a: TraceId): TraceId { return this.unary('sin', a); }
   cos(a: TraceId): TraceId { return this.unary('cos', a); }
   abs(a: TraceId): TraceId { return this.unary('abs', a); }
-  sqrt(a: TraceId): TraceId { return this.unary('sqrt', a); }
   neg(a: TraceId): TraceId { return this.unary('neg', a); }
   fract(a: TraceId): TraceId { return this.unary('fract', a); }
   tanh(a: TraceId): TraceId { return this.unary('tanh', a); }
   floor(a: TraceId): TraceId { return this.unary('floor', a); }
   sign(a: TraceId): TraceId { return this.unary('sign', a); }
-  exp(a: TraceId): TraceId { return this.unary('exp', a); }
-  log(a: TraceId): TraceId { return this.unary('log', a); }
+  sqrt(a: TraceId): TraceId { return this.unary('sqrt', a); }
+  normalize(a: TraceId): TraceId { return this.unary('normalize', a); }
   tri_wave(a: TraceId): TraceId { return this.unary('tri_wave', a); }
-  square_wave(a: TraceId): TraceId { return this.unary('square_wave', a); }
-  wave01(a: TraceId): TraceId { return this.unary('wave01', a); }
-  clamp01(a: TraceId): TraceId { return this.unary('clamp01', a); }
+  swizzle_yzx(a: TraceId): TraceId { return this.unary('swizzle_yzx', a); }
+  swizzle_zxy(a: TraceId): TraceId { return this.unary('swizzle_zxy', a); }
+  spherical(a: TraceId): TraceId { return this.unary('spherical', a); }
+  hsv2rgb(a: TraceId): TraceId { return this.unary('hsv2rgb', a); }
+  rgb2hsv(a: TraceId): TraceId { return this.unary('rgb2hsv', a); }
 
-  // --- Binary operations ---
+  // --- Binary operations (18) ---
   add(a: TraceId, b: TraceId): TraceId { return this.binary('add', a, b); }
   sub(a: TraceId, b: TraceId): TraceId { return this.binary('sub', a, b); }
   mul(a: TraceId, b: TraceId): TraceId { return this.binary('mul', a, b); }
   div(a: TraceId, b: TraceId): TraceId { return this.binary('div', a, b); }
   min(a: TraceId, b: TraceId): TraceId { return this.binary('min', a, b); }
   max(a: TraceId, b: TraceId): TraceId { return this.binary('max', a, b); }
-  pow(a: TraceId, b: TraceId): TraceId { return this.binary('pow', a, b); }
-  atan2(a: TraceId, b: TraceId): TraceId { return this.binary('atan2', a, b); }
   mod(a: TraceId, b: TraceId): TraceId { return this.binary('mod', a, b); }
-  kaleido(a: TraceId, b: TraceId): TraceId { return this.binary('kaleido', a, b); }
-  kaleido_mirror(a: TraceId, b: TraceId): TraceId { return this.binary('kaleido_mirror', a, b); }
-  mirror_fold(a: TraceId, b: TraceId): TraceId { return this.binary('mirror_fold', a, b); }
-  repeat(a: TraceId, b: TraceId): TraceId { return this.binary('repeat', a, b); }
-  rings(a: TraceId, b: TraceId): TraceId { return this.binary('rings', a, b); }
-  checker(a: TraceId, b: TraceId): TraceId { return this.binary('checker', a, b); }
-  noise(a: TraceId, b: TraceId): TraceId { return this.binary('noise', a, b); }
-  smoothstep_f(a: TraceId, b: TraceId): TraceId { return this.binary('smoothstep_f', a, b); }
-  step_f(a: TraceId, b: TraceId): TraceId { return this.binary('step_f', a, b); }
-  from_polar_x(a: TraceId, b: TraceId): TraceId { return this.binary('from_polar_x', a, b); }
-  from_polar_y(a: TraceId, b: TraceId): TraceId { return this.binary('from_polar_y', a, b); }
-
-  // --- Ternary operations ---
-  rotate2d_x(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('rotate2d_x', a, b, c); }
-  rotate2d_y(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('rotate2d_y', a, b, c); }
-  swirl_x(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('swirl_x', a, b, c); }
-  swirl_y(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('swirl_y', a, b, c); }
-  bend_x(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('bend_x', a, b, c); }
-  bend_y(a: TraceId, b: TraceId, c: TraceId): TraceId { return this.ternary('bend_y', a, b, c); }
+  pow(a: TraceId, b: TraceId): TraceId { return this.binary('pow', a, b); }
+  cross(a: TraceId, b: TraceId): TraceId { return this.binary('cross', a, b); }
+  dot_v(a: TraceId, b: TraceId): TraceId { return this.binary('dot_v', a, b); }
+  uniform_scale(a: TraceId, b: TraceId): TraceId { return this.binary('uniform_scale', a, b); }
+  rotate_x(a: TraceId, b: TraceId): TraceId { return this.binary('rotate_x', a, b); }
+  rotate_y(a: TraceId, b: TraceId): TraceId { return this.binary('rotate_y', a, b); }
+  rotate_z(a: TraceId, b: TraceId): TraceId { return this.binary('rotate_z', a, b); }
+  reflect(a: TraceId, b: TraceId): TraceId { return this.binary('reflect', a, b); }
+  avg(a: TraceId, b: TraceId): TraceId { return this.binary('avg', a, b); }
+  noise_v(a: TraceId, b: TraceId): TraceId { return this.binary('noise_v', a, b); }
+  swirl(a: TraceId, b: TraceId): TraceId { return this.binary('swirl', a, b); }
+  simplex3d(a: TraceId, b: TraceId): TraceId { return this.binary('simplex3d', a, b); }
 
   private unary(name: string, a: TraceId): TraceId {
     return this.addTrace({ type: 'op', funcIdx: this.funcIndex(name), inputs: [a] });
@@ -115,15 +113,11 @@ export class GenomeBuilder {
     return this.addTrace({ type: 'op', funcIdx: this.funcIndex(name), inputs: [a, b] });
   }
 
-  private ternary(name: string, a: TraceId, b: TraceId, c: TraceId): TraceId {
-    return this.addTrace({ type: 'op', funcIdx: this.funcIndex(name), inputs: [a, b, c] });
-  }
-
   // --- Build genome ---
 
   build(outputs: SeedOutputs, cols: number, rows: number): CGPGenome {
     // 1. Separate constants and ops
-    const constEntries: { traceIdx: number; value: number }[] = [];
+    const constEntries: { traceIdx: number; value: [number, number, number] }[] = [];
     const opEntries: { traceIdx: number; funcIdx: number; inputs: number[] }[] = [];
 
     for (let i = 0; i < this.traces.length; i++) {
@@ -134,8 +128,10 @@ export class GenomeBuilder {
 
     // 2. Build genome constants array (pad to at least DEFAULT_NUM_CONSTANTS)
     const numConsts = Math.max(constEntries.length, DEFAULT_NUM_CONSTANTS);
-    const genomeConstants = new Array(numConsts).fill(0).map((_, i) =>
-      i < constEntries.length ? constEntries[i].value : randFloat(-2, 2)
+    const genomeConstants: number[][] = new Array(numConsts).fill(null).map((_, i) =>
+      i < constEntries.length
+        ? [...constEntries[i].value]
+        : [randFloat(-2, 2), randFloat(-2, 2), randFloat(-2, 2)]
     );
 
     const inputSlots = NUM_INPUTS + numConsts;
@@ -208,15 +204,15 @@ export class GenomeBuilder {
       mapping.set(op.traceIdx, genomeIdx);
     }
 
-    // 5. Map outputs
-    const outKeys: (keyof SeedOutputs)[] = ['x', 'y', 'z', 'r', 'g', 'b'];
+    // 5. Map outputs (2: pos, col)
+    const outKeys: (keyof SeedOutputs)[] = ['pos', 'col'];
     const outputIndices = outKeys.map(k => {
       const gi = mapping.get(outputs[k]);
       if (gi === undefined) throw new Error(`Unmapped output '${k}' (trace ${outputs[k]})`);
       return gi;
     });
 
-    return { cols, rows, nodes: gridNodes, outputIndices, constants: genomeConstants, version: 2 };
+    return { cols, rows, nodes: gridNodes, outputIndices, constants: genomeConstants, version: 3 };
   }
 }
 
@@ -224,153 +220,213 @@ export class GenomeBuilder {
 
 export type SeedFactory = (cols: number, rows: number) => CGPGenome;
 
+// Helper: build a unit sphere from rotation chains.
+// rot_y((1,0,0), v/2) → tilt from equator, then rot_z by u → sweep longitude.
+// Returns the sphere position TraceId.
+function buildSphere(b: GenomeBuilder): TraceId {
+  const base = b.c(1, 0, 0);
+  const halfUV = b.mul(b.UV0, b.cu(0.5));     // vec3(u/2, v/2, 0)
+  const latAngle = b.swizzle_yzx(halfUV);     // vec3(v/2, 0, u/2) — .x = v/2
+  const tilted = b.rotate_y(base, latAngle);    // (cos(v/2), 0, -sin(v/2))
+  return b.rotate_z(tilted, b.UV0);             // full sphere
+}
+
+// --- 1. Sphere ---
+// Demonstrates: rotate_y, rotate_z, mul, swizzle_yzx, hsv2rgb, add
 function sphereSeed(cols: number, rows: number): CGPGenome {
   const b = new GenomeBuilder();
-  const { U, V, T } = b;
+  const pos = buildSphere(b);
 
-  const half = b.c(0.5);
-  const halfV = b.mul(V, half);       // lat = v * 0.5, maps [-PI,PI] to [-PI/2,PI/2]
-  const cosLat = b.cos(halfV);
-  const sinLat = b.sin(halfV);
-  const cosU = b.cos(U);
-  const sinU = b.sin(U);
+  // Color: hsv2rgb — hue from u (longitude), saturation from v (latitude)
+  const scale = b.c(1 / (2 * Math.PI), 1 / (2 * Math.PI), 0);
+  const normalized = b.mul(b.UV0, scale);
+  const hsv = b.add(normalized, b.c(0, 0.5, 0.9));
+  const col = b.hsv2rgb(hsv);
 
-  // Time-varying radius: 1 + 0.15*sin(t)
-  const one = b.c(1.0);
-  const amp = b.c(0.15);
-  const pulse = b.mul(b.sin(T), amp);
-  const radius = b.add(one, pulse);
-
-  const x = b.mul(b.mul(radius, cosLat), cosU);
-  const y = b.mul(b.mul(radius, cosLat), sinU);
-  const z = b.mul(radius, sinLat);
-
-  // Colors: longitude and latitude mapped to [0,1] via *0.5+0.5 in shader
-  const r = cosU;    // warm/cool bands around equator
-  const g = sinLat;  // pole-to-pole gradient
-  const bVal = b.c(-0.2); // maps to 0.4 after *0.5+0.5
-
-  return b.build({ x, y, z, r, g, b: bVal }, cols, rows);
+  return b.build({ pos, col }, cols, rows);
 }
 
+// --- 2. Torus ---
+// Demonstrates: cos, swizzle_yzx, rotate_y, rotate_z, add
 function torusSeed(cols: number, rows: number): CGPGenome {
   const b = new GenomeBuilder();
-  const { U, V, T } = b;
-
-  const R = b.c(1.5);    // major radius
-  const r = b.c(0.5);    // minor radius
-
-  const cosV = b.cos(V);
-  const sinV = b.sin(V);
-  const cosU = b.cos(U);
-  const sinU = b.sin(U);
-
-  // Time-varying tube radius: r * (1 + 0.2*sin(t))
-  const one = b.c(1.0);
-  const amp = b.c(0.2);
-  const pulse = b.add(one, b.mul(b.sin(T), amp));
-
-  const rCosV = b.mul(b.mul(r, pulse), cosV);  // r * pulse * cos(v)
-  const rSinV = b.mul(b.mul(r, pulse), sinV);  // r * pulse * sin(v)
-  const inner = b.add(R, rCosV);               // R + r*pulse*cos(v)
-
-  const x = b.mul(inner, cosU);
-  const y = b.mul(inner, sinU);
-  const z = rSinV;
-
-  // Colors: tube angle and ring angle
-  const red = cosV;   // varies around tube cross-section
-  const grn = cosU;   // varies around the ring
-  const blu = b.c(0); // maps to 0.5 after *0.5+0.5
-
-  return b.build({ x, y, z, r: red, g: grn, b: blu }, cols, rows);
+  const tubeR = b.c(0.5, 0, 0);
+  const vAngle = b.swizzle_yzx(b.UV0);
+  const tube = b.rotate_y(tubeR, vAngle);
+  const majorR = b.c(1.2, 0, 0);
+  const offset = b.add(tube, majorR);
+  const pos = b.rotate_z(offset, b.UV0);
+  const col = b.cos(b.DAT);
+  return b.build({ pos, col }, cols, rows);
 }
 
-function wavySeed(cols: number, rows: number): CGPGenome {
+// --- 3. Crystal ---
+// Demonstrates: floor, fract, mul
+function crystalSeed(cols: number, rows: number): CGPGenome {
   const b = new GenomeBuilder();
-  const { U, V, T } = b;
-
-  const half = b.c(0.5);
-  const halfV = b.mul(V, half);
-  const cosLat = b.cos(halfV);
-  const sinLat = b.sin(halfV);
-  const cosU = b.cos(U);
-  const sinU = b.sin(U);
-
-  // Radius modulation: 1 + 0.3*sin(3u + t)*sin(2v)  — bumps rotate over time
-  const three = b.c(3.0);
-  const two = b.c(2.0);
-  const amp = b.c(0.3);
-  const one = b.c(1.0);
-
-  const sin3uT = b.sin(b.add(b.mul(U, three), T));  // sin(3u + t) — phase shifts with time
-  const sin2v = b.sin(b.mul(V, two));
-  const bump = b.mul(b.mul(sin3uT, sin2v), amp);
-  const radius = b.add(one, bump);
-
-  const x = b.mul(b.mul(radius, cosLat), cosU);
-  const y = b.mul(b.mul(radius, cosLat), sinU);
-  const z = b.mul(radius, sinLat);
-
-  // Colorful: use the bump for color variation
-  const r = sin3uT;
-  const g = sinLat;
-  const bVal = sin2v;
-
-  return b.build({ x, y, z, r, g, b: bVal }, cols, rows);
+  const sphere = buildSphere(b);
+  const scaled = b.mul(sphere, b.cu(3.0));
+  const pos = b.mul(b.floor(scaled), b.cu(0.4));
+  const col = b.fract(scaled);
+  return b.build({ pos, col }, cols, rows);
 }
 
-function kaleidoSeed(cols: number, rows: number): CGPGenome {
+// --- 4. Swirl ---
+// Demonstrates: swirl, sin
+function swirlSeed(cols: number, rows: number): CGPGenome {
   const b = new GenomeBuilder();
-  const { U, V, D, A } = b;
-
-  // Kaleidoscope fold: 6 sectors (0.75 * 8 = 6)
-  const sectors = b.c(0.75);
-  const ka = b.kaleido_mirror(A, sectors);
-
-  // Radius modulation from distance
-  const three = b.c(3.0);
-  const rMod = b.cos(b.mul(D, three));
-  const rScale = b.add(D, b.mul(rMod, b.c(0.3)));
-
-  // Position from folded polar coordinates
-  const x = b.from_polar_x(rScale, ka);
-  const y = b.from_polar_y(rScale, ka);
-  const z = b.sin(b.mul(ka, b.c(2.0)));
-
-  // Colors from kaleidoscope angle + distance
-  const r = b.cos(ka);
-  const g = b.sin(b.mul(ka, three));
-  const bVal = b.wave01(b.mul(D, b.c(2.0)));
-
-  return b.build({ x, y, z, r, g, b: bVal }, cols, rows);
+  const sphere = buildSphere(b);
+  const pos = b.swirl(sphere, b.cu(2.0));
+  const mixed = b.add(sphere, b.swizzle_yzx(sphere));
+  const col = b.sin(mixed);
+  return b.build({ pos, col }, cols, rows);
 }
 
-function spiralSeed(cols: number, rows: number): CGPGenome {
+// --- 5. Asteroid ---
+// Demonstrates: simplex3d, uniform_scale, normalize
+function asteroidSeed(cols: number, rows: number): CGPGenome {
   const b = new GenomeBuilder();
-  const { U, V } = b;
+  const sphere = buildSphere(b);
 
-  // Swirl the UV coordinates
-  const strength = b.c(2.0);
-  const sx = b.swirl_x(U, V, strength);
-  const sy = b.swirl_y(U, V, strength);
+  // Simplex noise displaces sphere surface radially
+  const noise = b.simplex3d(sphere, b.c(4.0, 1.0, 0.0));
+  // uniform_scale: sphere * (1 + noise.x * 0.15) — radial bumps
+  const bumpScale = b.add(b.cu(1.0), b.mul(noise, b.cu(0.15)));
+  const pos = b.uniform_scale(sphere, bumpScale);
 
-  // Sphere-like base with swirled coordinates
-  const half = b.c(0.5);
-  const halfV = b.mul(V, half);
-  const cosLat = b.cos(halfV);
-  const sinLat = b.sin(halfV);
+  // Color: normalize noise direction → hsv rainbow
+  const col = b.hsv2rgb(b.normalize(noise));
 
-  const x = b.mul(cosLat, b.cos(sx));
-  const y = b.mul(cosLat, b.sin(sx));
-  const z = sinLat;
+  return b.build({ pos, col }, cols, rows);
+}
 
-  // Colors from swirl
-  const r = b.sin(sx);
-  const g = b.cos(sy);
-  const bVal = b.sin(b.add(sx, sy));
+// --- 6. Spiky ---
+// Demonstrates: pow, abs, dot_v, sub
+function spikySeed(cols: number, rows: number): CGPGenome {
+  const b = new GenomeBuilder();
+  const sphere = buildSphere(b);
 
-  return b.build({ x, y, z, r, g, b: bVal }, cols, rows);
+  // sub(sphere, sphere.yzx) = (x-y, y-z, z-x) — differences between components
+  // abs + pow(3) sharpens into angular spikes
+  const diff = b.sub(sphere, b.swizzle_yzx(sphere));
+  const sharp = b.pow(b.abs(diff), b.cu(3.0));
+  const pos = b.add(sphere, b.mul(sharp, b.cu(0.5)));
+
+  // Color: dot_v with golden-ratio vector → angular gradient
+  const col = b.sin(b.dot_v(sphere, b.c(1, 1.618, 0.618)));
+
+  return b.build({ pos, col }, cols, rows);
+}
+
+// --- 7. Shell ---
+// Demonstrates: spherical, sqrt, mod
+function shellSeed(cols: number, rows: number): CGPGenome {
+  const b = new GenomeBuilder();
+  const sphere = buildSphere(b);
+
+  // Convert to spherical (r, θ, φ), create banded ridges
+  const sph = b.spherical(sphere);
+  const bands = b.mod(sph, b.cu(0.5));
+  const smooth = b.sqrt(bands);
+  const pos = b.mul(sphere, b.add(b.cu(0.7), smooth));
+
+  // Color: shifted spherical coords through mod → colorful bands
+  const col = b.mod(b.add(sph, b.c(0.2, 0.4, 0.6)), b.cu(1.0));
+
+  return b.build({ pos, col }, cols, rows);
+}
+
+// --- 8. Gem ---
+// Demonstrates: reflect, min, max, neg
+function gemSeed(cols: number, rows: number): CGPGenome {
+  const b = new GenomeBuilder();
+  const sphere = buildSphere(b);
+
+  // Reflect across (1,1,1) diagonal, then min/max/neg create angular facets
+  const axis = b.c(0.577, 0.577, 0.577);
+  const reflected = b.reflect(sphere, axis);
+  const cut = b.min(sphere, reflected);
+  const pos = b.max(cut, b.neg(reflected));
+
+  // Color: abs of reflected coords → facet-based coloring
+  const col = b.abs(reflected);
+
+  return b.build({ pos, col }, cols, rows);
+}
+
+// --- 9. Ripple ---
+// Demonstrates: tri_wave, avg, rotate_x
+function rippleSeed(cols: number, rows: number): CGPGenome {
+  const b = new GenomeBuilder();
+  const sphere = buildSphere(b);
+
+  // Triangle waves of scaled sphere position → periodic bumps per axis
+  const waves = b.tri_wave(b.mul(sphere, b.cu(4.0)));
+  // avg blends bumpy version with original → gentle rippled surface
+  const pos = b.avg(sphere, b.mul(sphere, waves));
+
+  // Color: rotate_x twists UVA, tri_wave maps to vivid bands
+  const col = b.tri_wave(b.rotate_x(b.UVA, b.UV0));
+
+  return b.build({ pos, col }, cols, rows);
+}
+
+// --- 10. Organic ---
+// Demonstrates: tanh, noise_v, sign, div
+function organicSeed(cols: number, rows: number): CGPGenome {
+  const b = new GenomeBuilder();
+  const sphere = buildSphere(b);
+
+  // Hash noise → tanh saturates smoothly, sign creates hard patches
+  const noise = b.noise_v(sphere, b.DAT);
+  const smooth = b.tanh(noise);
+  const hard = b.sign(noise);
+  // Combined: smooth curves + hard edges → organic texture
+  const pos = b.add(sphere, b.mul(b.add(smooth, hard), b.cu(0.1)));
+
+  // Color: div of UV by π → smooth gradient
+  const col = b.div(b.UVA, b.cu(Math.PI));
+
+  return b.build({ pos, col }, cols, rows);
+}
+
+// --- 11. Twist ---
+// Demonstrates: cross, swizzle_zxy, rgb2hsv
+function twistSeed(cols: number, rows: number): CGPGenome {
+  const b = new GenomeBuilder();
+  const sphere = buildSphere(b);
+
+  // cross(sphere, sphere.zxy) creates perpendicular quadratic wings
+  const crossed = b.cross(sphere, b.swizzle_zxy(sphere));
+  // Blend sphere + cross product → twisted organic form
+  const pos = b.add(b.mul(sphere, b.cu(0.6)), b.mul(crossed, b.cu(0.6)));
+
+  // Color: abs(sphere) as RGB → rgb2hsv → swizzle channels
+  const col = b.swizzle_zxy(b.rgb2hsv(b.abs(sphere)));
+
+  return b.build({ pos, col }, cols, rows);
+}
+
+// --- 12. Cube ---
+// Demonstrates: abs, max, swizzle_yzx, swizzle_zxy, div, simplex3d
+function cubeSeed(cols: number, rows: number): CGPGenome {
+  const b = new GenomeBuilder();
+  const sphere = buildSphere(b);
+
+  // Project sphere → cube by dividing by infinity norm (max absolute component)
+  const abs_s = b.abs(sphere);
+  const m1 = b.max(abs_s, b.swizzle_yzx(abs_s));
+  const m2 = b.max(m1, b.swizzle_zxy(abs_s));   // all components = max(|x|,|y|,|z|)
+  const cube = b.div(sphere, m2);
+
+  // Tilt so 3 faces are visible from the initial camera angle
+  const pos = b.rotate_y(b.rotate_x(cube, b.cu(0.4)), b.cu(0.5));
+
+  // Color: simplex noise sampled from sphere coords (uniform distribution)
+  // tri() in the shader maps each channel to [0,1] → vibrant RGB
+  const col = b.simplex3d(sphere, b.c(4.0, 1.0, 0.0));
+
+  return b.build({ pos, col }, cols, rows);
 }
 
 export interface Preset {
@@ -381,7 +437,14 @@ export interface Preset {
 export const PRESETS: Preset[] = [
   { name: 'Sphere', create: sphereSeed },
   { name: 'Torus', create: torusSeed },
-  { name: 'Wavy Sphere', create: wavySeed },
-  { name: 'Kaleidoscope', create: kaleidoSeed },
-  { name: 'Spiral', create: spiralSeed },
+  { name: 'Crystal', create: crystalSeed },
+  { name: 'Swirl', create: swirlSeed },
+  { name: 'Asteroid', create: asteroidSeed },
+  { name: 'Spiky', create: spikySeed },
+  { name: 'Shell', create: shellSeed },
+  { name: 'Gem', create: gemSeed },
+  { name: 'Ripple', create: rippleSeed },
+  { name: 'Organic', create: organicSeed },
+  { name: 'Twist', create: twistSeed },
+  { name: 'Cube', create: cubeSeed },
 ];
