@@ -66,6 +66,12 @@ export function createGrid(container: HTMLElement, genomes: CGPGenome[]): GridSt
           `<line x1="21" y1="3" x2="14" y2="10"/>` +
           `<line x1="3" y1="21" x2="10" y2="14"/>` +
         `</svg>` +
+      `</button>` +
+      `<button class="cell-btn cell-btn-code" data-action="code" data-index="${i}" title="View Code">` +
+        `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+          `<polyline points="16 18 22 12 16 6"/>` +
+          `<polyline points="8 6 2 12 8 18"/>` +
+        `</svg>` +
       `</button>`;
     cell.appendChild(actions);
 

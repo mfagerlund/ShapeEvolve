@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { route } from 'preact-router';
 import { getShape, type ShapeDoc } from '../db';
+import { migrateGenome, type CGPGenome } from '../cgp';
+import { CodePanel } from './CodePanel';
 
 interface Props {
   id?: string;
@@ -9,6 +11,7 @@ interface Props {
 export function DetailPage({ id }: Props) {
   const [shape, setShape] = useState<ShapeDoc | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showCode, setShowCode] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<any>(null);
   const animRef = useRef(0);
@@ -140,9 +143,17 @@ export function DetailPage({ id }: Props) {
           <div class="detail-actions">
             <button class="btn btn-primary" onClick={forkAndEvolve}>Fork &amp; Evolve</button>
             <button class="btn" onClick={loadShape}>Load</button>
+            <button class="btn" onClick={() => setShowCode(true)}>View Code</button>
           </div>
         </div>
       </div>
+
+      {showCode && (
+        <CodePanel
+          genome={migrateGenome(JSON.parse(shape.genome) as CGPGenome)}
+          onClose={() => setShowCode(false)}
+        />
+      )}
     </div>
   );
 }

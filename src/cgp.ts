@@ -285,6 +285,29 @@ export const FUNCTIONS: CGPFunction[] = [
       return t * t * (3 - 2 * t);
     }) as Vec3;
   }},
+  { name: 'fma', arity: 3, glsl: ([a, b, c]) => `(${a}*${b}+${c})`, js: ([a, b, c]) => v3add(v3mul(a, b), c) },
+  { name: 'select', arity: 3, glsl: ([a, b, c]) => `mix(${b},${a},step(vec3(0.0),${c}))`, js: ([a, b, c]) => {
+    return a.map((av, i) => c[i] >= 0 ? av : b[i]) as Vec3;
+  }},
+  { name: 'remap', arity: 3, glsl: ([a, b, c]) => `remap3(${a},${b},${c})`, js: ([a, b, c]) => {
+    return a.map((v, i) => {
+      const lo = Math.min(b[i], c[i]);
+      const hi = Math.max(b[i], c[i]);
+      return (v - lo) / (hi - lo + 0.001);
+    }) as Vec3;
+  }},
+  { name: 'rot_axis', arity: 3, glsl: ([a, b, c]) => `rodrigues3(${a},${b},${c}.x)`, js: ([a, b, c]) => {
+    const axis = v3normalize(b);
+    const angle = c[0];
+    const cos_a = Math.cos(angle), sin_a = Math.sin(angle);
+    const dot_ak = v3dot(a, axis);
+    const cross_ka = v3cross(axis, a);
+    return [
+      a[0] * cos_a + cross_ka[0] * sin_a + axis[0] * dot_ak * (1 - cos_a),
+      a[1] * cos_a + cross_ka[1] * sin_a + axis[1] * dot_ak * (1 - cos_a),
+      a[2] * cos_a + cross_ka[2] * sin_a + axis[2] * dot_ak * (1 - cos_a),
+    ];
+  }},
 ];
 
 // --- Genome ---
@@ -423,6 +446,7 @@ export function getActiveNodes(g: CGPGenome): Set<number> {
 // --- Mutation ---
 
 const GENES_PER_NODE = 1 + MAX_ARITY; // 1 funcIdx + 3 inputs = 4
+const INSERT_NODE_RATE = 0.2;
 
 export function mutateGenome(parent: CGPGenome, numMutations: number): CGPGenome {
   const g = cloneGenome(parent);
@@ -433,24 +457,80 @@ export function mutateGenome(parent: CGPGenome, numMutations: number): CGPGenome
   const numConstGenes = numConsts * 3;
   const numGenes = g.nodes.length * GENES_PER_NODE + NUM_OUTPUTS + numConstGenes;
 
-  // Do numMutations-1 random mutations, then 1 Goldman-Punch (guaranteed active)
-  const randomRounds = Math.max(0, numMutations - 1);
+  // All mutations use Goldman-Punch: each one guaranteed to hit an active gene
+  for (let m = 0; m < numMutations; m++) {
+    const activeNodes = getActiveNodes(g);
 
-  for (let m = 0; m < randomRounds; m++) {
-    mutateOneGene(g, slots, total, numConsts, numConstGenes, numGenes);
-  }
+    // Try insert-node mutation (NEAT-style) with some probability
+    if (Math.random() < INSERT_NODE_RATE && tryInsertNode(g, slots, activeNodes)) {
+      continue;
+    }
 
-  // Goldman-Punch: keep mutating until an active gene is hit
-  const activeNodes = getActiveNodes(g);
-  let hitActive = false;
-  let attempts = 0;
-  while (!hitActive && attempts < numGenes * 3) {
-    attempts++;
-    const wasActive = mutateOneGene(g, slots, total, numConsts, numConstGenes, numGenes, activeNodes);
-    if (wasActive) hitActive = true;
+    // Fall back to Goldman-Punch point mutation
+    let hitActive = false;
+    let attempts = 0;
+    while (!hitActive && attempts < numGenes * 3) {
+      attempts++;
+      const wasActive = mutateOneGene(g, slots, total, numConsts, numConstGenes, numGenes, activeNodes);
+      if (wasActive) hitActive = true;
+    }
   }
 
   return g;
+}
+
+/** NEAT-style insert-node: splice a dead node into an active connection. */
+function tryInsertNode(g: CGPGenome, slots: number, activeNodes: Set<number>): boolean {
+  // Collect active CGP nodes (not inputs/constants)
+  const activeCGP: number[] = [];
+  for (const idx of activeNodes) {
+    if (idx >= slots) activeCGP.push(idx);
+  }
+  if (activeCGP.length === 0) return false;
+
+  // Pick a random active node N
+  const nIdx = activeCGP[randInt(activeCGP.length)];
+  const nLocal = nIdx - slots;
+  const nCol = Math.floor(nLocal / g.rows);
+  const node = g.nodes[nLocal];
+  const fn = FUNCTIONS[node.funcIdx];
+
+  // Pick a random input of N
+  const inputSlot = randInt(fn.arity);
+  const srcIdx = node.inputs[inputSlot];
+
+  // D's column must satisfy: S accessible from D, and D accessible from N
+  // Inputs/constants are accessible from any column, CGP nodes need col(D) > col(S)
+  const minCol = srcIdx < slots ? 0 : Math.floor((srcIdx - slots) / g.rows) + 1;
+  const maxCol = nCol; // exclusive — D must be in an earlier column than N
+
+  if (minCol >= maxCol) return false;
+
+  // Find dead nodes in valid columns
+  const candidates: number[] = [];
+  for (let c = minCol; c < maxCol; c++) {
+    for (let r = 0; r < g.rows; r++) {
+      const dIdx = slots + c * g.rows + r;
+      if (!activeNodes.has(dIdx)) candidates.push(dIdx);
+    }
+  }
+  if (candidates.length === 0) return false;
+
+  // Pick a random dead node D and wire it up
+  const dIdx = candidates[randInt(candidates.length)];
+  const dLocal = dIdx - slots;
+  const dCol = Math.floor(dLocal / g.rows);
+  const dMaxSource = slots + dCol * g.rows;
+
+  g.nodes[dLocal].funcIdx = randInt(FUNCTIONS.length);
+  g.nodes[dLocal].inputs[0] = srcIdx; // preserve original data flow
+  for (let i = 1; i < MAX_ARITY; i++) {
+    g.nodes[dLocal].inputs[i] = randInt(dMaxSource);
+  }
+
+  // Rewire N to route through D
+  node.inputs[inputSlot] = dIdx;
+  return true;
 }
 
 function mutateOneGene(
@@ -686,6 +766,16 @@ vec3 quantize3(vec3 a, vec3 b) {
   vec3 q = max(abs(b), vec3(0.001));
   return floor(a * q) / q;
 }
+vec3 remap3(vec3 a, vec3 b, vec3 c) {
+  vec3 lo = min(b, c);
+  vec3 hi = max(b, c);
+  return (a - lo) / (hi - lo + vec3(0.001));
+}
+vec3 rodrigues3(vec3 v, vec3 axis, float angle) {
+  vec3 k = safeNormalize(axis);
+  float c = cos(angle), s = sin(angle);
+  return v * c + cross(k, v) * s + k * dot(k, v) * (1.0 - c);
+}
 `;
 
 export function compileToGLSL(g: CGPGenome): { vertexShader: string; fragmentShader: string } {
@@ -786,6 +876,70 @@ void main() {
 `;
 
   return { vertexShader, fragmentShader };
+}
+
+// --- Expression tree builder ---
+
+export function genomeToExpression(g: CGPGenome): { pos: string; col: string } {
+  const slots = numInputSlots(g);
+  const active = getActiveNodes(g);
+
+  // Count how many times each node is referenced by active nodes / outputs
+  const refCount = new Map<number, number>();
+  for (const outIdx of g.outputIndices) {
+    refCount.set(outIdx, (refCount.get(outIdx) ?? 0) + 1);
+  }
+  for (let i = 0; i < g.nodes.length; i++) {
+    const globalIdx = i + slots;
+    if (!active.has(globalIdx)) continue;
+    const node = g.nodes[i];
+    const fn = FUNCTIONS[node.funcIdx];
+    for (let a = 0; a < fn.arity; a++) {
+      const inp = node.inputs[a];
+      refCount.set(inp, (refCount.get(inp) ?? 0) + 1);
+    }
+  }
+
+  // Build expressions, hoisting shared subexpressions into let bindings
+  const cache = new Map<number, string>();
+  const lets: string[] = [];
+
+  function expr(idx: number): string {
+    if (cache.has(idx)) return cache.get(idx)!;
+
+    let result: string;
+    if (idx < NUM_INPUTS) {
+      result = INPUT_NAMES[idx];
+    } else if (idx < slots) {
+      const c = g.constants[idx - NUM_INPUTS];
+      result = `vec3(${c.map(v => v.toFixed(3)).join(', ')})`;
+    } else {
+      const node = g.nodes[idx - slots];
+      const fn = FUNCTIONS[node.funcIdx];
+      const args = node.inputs.slice(0, fn.arity).map(i => expr(i));
+      result = `${fn.name}(${args.join(', ')})`;
+    }
+
+    // If referenced multiple times, hoist to a let binding
+    if (idx >= slots && (refCount.get(idx) ?? 0) > 1) {
+      const name = `n${idx - slots}`;
+      lets.push(`let ${name} = ${result}`);
+      cache.set(idx, name);
+      return name;
+    }
+
+    cache.set(idx, result);
+    return result;
+  }
+
+  const posExpr = expr(g.outputIndices[0]);
+  const colExpr = expr(g.outputIndices[1]);
+
+  const lines = lets.length > 0 ? lets.join('\n') + '\n\n' : '';
+  return {
+    pos: lines + `pos = ${posExpr}`,
+    col: `col = ${colExpr}`,
+  };
 }
 
 // --- JS evaluation (for debugging) ---

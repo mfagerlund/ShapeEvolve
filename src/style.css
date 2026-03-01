@@ -339,6 +339,11 @@ html, body {
   border-color: var(--accent);
 }
 
+.cell-btn-code:hover {
+  color: #22d3ee;
+  border-color: #22d3ee;
+}
+
 /* --- Maximize overlay --- */
 
 .maximize-overlay {
@@ -751,6 +756,108 @@ html, body {
   display: flex;
   gap: 10px;
   margin-top: 8px;
+}
+
+/* --- Code panel --- */
+
+.code-panel {
+  max-width: 700px;
+  width: 90vw;
+  max-height: 80vh;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.code-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.code-tab {
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.code-tab:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+.code-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.code-copy {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.code-copy:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+.code-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  min-height: 0;
+}
+
+.code-content pre {
+  margin: 0;
+  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* --- Graph legend --- */
+
+.graph-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+  font-size: 0.7rem;
+  font-family: 'Fira Code', 'Consolas', monospace;
+}
+
+.graph-legend-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
 }
 
 /* --- Responsive --- */

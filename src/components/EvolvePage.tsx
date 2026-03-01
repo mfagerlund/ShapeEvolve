@@ -10,6 +10,7 @@ import { user } from '../auth';
 import { saveShape, updateShape } from '../db';
 import { uploadThumbnail, captureThumbnail } from '../storage';
 import { SaveDialog } from './SaveDialog';
+import { CodePanel } from './CodePanel';
 
 function showToast(message: string) {
   const toast = document.getElementById('toast');
@@ -35,6 +36,7 @@ export function EvolvePage() {
   const [saving, setSaving] = useState(false);
   const [saveIndex, setSaveIndex] = useState(0);
   const [maximizedIndex, setMaximizedIndex] = useState<number | null>(null);
+  const [codeIndex, setCodeIndex] = useState<number | null>(null);
 
   // Initialize grid once
   useEffect(() => {
@@ -178,6 +180,7 @@ export function EvolvePage() {
       if (e.key === 'Escape') {
         setMaximizedIndex(null);
         setShowSave(false);
+        setCodeIndex(null);
         return;
       }
       if (e.key === 'Enter' || e.key === ' ') {
@@ -234,6 +237,8 @@ export function EvolvePage() {
         setShowSave(true);
       } else if (action === 'maximize') {
         setMaximizedIndex(prev => prev === idx ? null : idx);
+      } else if (action === 'code') {
+        setCodeIndex(idx);
       }
       return;
     }
@@ -456,6 +461,13 @@ export function EvolvePage() {
           onSave={handleSave}
           onCancel={() => setShowSave(false)}
           saving={saving}
+        />
+      )}
+
+      {codeIndex !== null && stateRef.current && (
+        <CodePanel
+          genome={stateRef.current.genomes[codeIndex]}
+          onClose={() => setCodeIndex(null)}
         />
       )}
     </>
