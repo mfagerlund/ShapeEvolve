@@ -6,7 +6,7 @@ export class ShapeViewer {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private mesh: THREE.Mesh | null = null;
-  private material: THREE.ShaderMaterial | null = null;
+  private material: THREE.Material | null = null;
   private clock = new THREE.Clock();
   private disposed = false;
 
@@ -53,9 +53,9 @@ export class ShapeViewer {
       const fallbackMat = new THREE.MeshBasicMaterial({
         color: 0x333333, wireframe: true, side: THREE.DoubleSide,
       });
+      this.material = fallbackMat;
       this.mesh = new THREE.Mesh(geometry, fallbackMat);
       this.scene.add(this.mesh);
-      this.material = null;
     }
   }
 
@@ -70,7 +70,7 @@ export class ShapeViewer {
 
     const elapsed = this.clock.getElapsedTime();
 
-    if (this.material) {
+    if (this.material instanceof THREE.ShaderMaterial) {
       this.material.uniforms.time.value = elapsed;
     }
 

@@ -104,12 +104,14 @@ export function DetailPage({ id }: Props) {
         </div>
       </div>
 
-      {showCode && (
-        <CodePanel
-          genome={migrateGenome(JSON.parse(shape.genome) as CGPGenome)}
-          onClose={() => setShowCode(false)}
-        />
-      )}
+      {showCode && (() => {
+        try {
+          const parsed = migrateGenome(JSON.parse(shape.genome) as CGPGenome);
+          return <CodePanel genome={parsed} onClose={() => setShowCode(false)} />;
+        } catch {
+          return <div class="page-message">Failed to parse genome data.</div>;
+        }
+      })()}
     </div>
   );
 }

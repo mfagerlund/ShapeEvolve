@@ -20,9 +20,15 @@ export function useShapeViewer(
 
     import('./viewer').then(({ ShapeViewer }) => {
       if (disposed) return;
-      const parsed: CGPGenome = typeof genome === 'string'
-        ? migrateGenome(JSON.parse(genome))
-        : genome;
+      let parsed: CGPGenome;
+      try {
+        parsed = typeof genome === 'string'
+          ? migrateGenome(JSON.parse(genome))
+          : genome;
+      } catch (err) {
+        console.error('Failed to parse genome:', err);
+        return;
+      }
       const viewer = new ShapeViewer(el, 0);
       viewer.setGenome(parsed);
       viewerRef.current = viewer;

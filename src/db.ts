@@ -29,7 +29,8 @@ export interface ShapeDoc {
 const shapesCol = collection(db, 'shapes');
 
 function docToShape(d: QueryDocumentSnapshot): ShapeDoc {
-  const data = { id: d.id, ...d.data() } as ShapeDoc;
+  const raw = d.data();
+  const data = { id: d.id, ...raw, tags: Array.isArray(raw.tags) ? raw.tags : [] } as ShapeDoc;
   try {
     const genome = JSON.parse(data.genome);
     const migrated = migrateGenome(genome);

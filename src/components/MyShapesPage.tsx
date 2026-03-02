@@ -27,7 +27,7 @@ export function MyShapesPage() {
       console.error('Failed to load shapes:', err);
       setLoading(false);
     });
-  }, [u]);
+  }, [u, authReady.value]);
 
   async function handleDelete(shape: ShapeDoc) {
     if (!await confirm(`Delete "${shape.name}"?`, { confirmLabel: 'Delete', danger: true })) return;
