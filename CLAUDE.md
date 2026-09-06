@@ -76,3 +76,9 @@ ShapeEvolve is an interactive 3D shape evolution app using **Cartesian Genetic P
 ## V2 Roadmap
 
 See `PLAN.md` for the full v2 plan: gallery, detail pages, comments, stars, forking, and user profiles.
+
+## Project card
+
+`project-card/` holds this project's one-liner, tags and image for the cross-project index.
+When the purpose or the look of the project changes materially, regenerate it with
+`/project-index shapevolve`.
